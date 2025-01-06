@@ -41,8 +41,15 @@ class Result:
 
 class CacheRepository:
     """Generic repository to manage DiskCache."""
-    def __init__(self, cache_name: str):
-        self.cache = Cache(cache_name)
+    def __init__(self, cache_name: str, cache_location: str = None):
+        # Set the cache directory
+        if cache_location:
+            os.makedirs(cache_location, exist_ok=True)  # Ensure directory exists
+            cache_path = os.path.join(cache_location, cache_name)
+        else:
+            cache_path = cache_name  # Default location in current working directory
+
+        self.cache = Cache(cache_path)
 
     def add(self, key: str, value: any):
         self.cache[key] = value
@@ -155,12 +162,14 @@ class ClientRequestResultFacade:
         }
 
 
-# Usage Example
 if __name__ == "__main__":
+    # Specify custom cache location
+    custom_cache_dir = r"C:\mycache\application_toto"
+
     # Initialize repositories
-    client_repo = CacheRepository("clients_cache")
-    request_repo = CacheRepository("requests_cache")
-    result_repo = CacheRepository("results_cache")
+    client_repo = CacheRepository("clients_cache", custom_cache_dir)
+    request_repo = CacheRepository("requests_cache", custom_cache_dir)
+    result_repo = CacheRepository("results_cache", custom_cache_dir)
 
     # Initialize services
     client_service = ClientService(client_repo)
