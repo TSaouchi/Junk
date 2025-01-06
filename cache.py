@@ -32,6 +32,12 @@ class ResultRepository:
         with open(result_path, "rb") as file:
             return pickle.load(file)
 
+    def delete_result(self, result_id: str):
+        """Delete the result file if it exists."""
+        result_path = os.path.join(self.result_dir, f"{result_id}.bin")
+        if os.path.exists(result_path):
+            os.remove(result_path)
+
 
 class RequestRepository:
     """Handles the storage of requests."""
@@ -62,7 +68,7 @@ class CacheManager:
 
     def add_request_and_result(self, request: dict, result: dict) -> (str, str):
         """
-        Adds a request and its corresponding result.
+        Adds a request and its corresponding result atomically.
         - The result is stored in binary format.
         - The request stores a reference to the result (result ID).
 
@@ -77,16 +83,25 @@ class CacheManager:
         request_id = IDGenerator.generate("request")
         result_id = IDGenerator.generate("result")
 
-        # Store the result in binary format
-        self.result_repository.store_result(result_id, result)
+        try:
+            with self.request_repository.cache.transact():  # Atomic block for requests
+                # Store the result in binary format
+                self.result_repository.store_result(result_id, result)
 
-        # Add a reference to the result in the request
-        request["result"] = result_id
+                # Add a reference to the result in the request
+                request["result"] = result_id
 
-        # Store the request
-        self.request_repository.store_request(request_id, request)
+                # Store the request
+                self.request_repository.store_request(request_id, request)
 
-        return request_id, result_id
+            print(f"Successfully saved request {request_id} and result {result_id}.")
+            return request_id, result_id
+        
+        except Exception as e:
+            # If any error occurs, delete the result and raise the exception to ensure atomicity
+            print(f"Error occurred: {e}. Rolling back...")
+            self.result_repository.delete_result(result_id)  # Delete the result
+            raise  # Re-raise exception to handle it outside
 
     def get_request_with_result(self, request_id: str) -> dict:
         """
@@ -108,33 +123,33 @@ class CacheManager:
 
         return request_data
 
+
+# Usage example
 if __name__ == "__main__":
-    # Define cache location
-    cache_location = r"C:\mycache\application_toto"
-
-    # Initialize repositories
-    request_repo = RequestRepository(os.path.join(cache_location, "requests"))
+    cache_location = "C:/mycache/application_toto"
+    request_repo = RequestRepository(cache_location)
     result_repo = ResultRepository(cache_location)
-
-    # Initialize cache manager
+    
     cache_manager = CacheManager(request_repo, result_repo)
-
-    # Example: Adding a request and result
-    request = {
+    
+    # Example request and result
+    request_data = {
         "client_name": "Alice",
         "operation": "compute_sum",
         "params": [10, 20, 30]
     }
-    result = {
+    result_data = {
         "status": "success",
         "value": 60
     }
 
-    # Add request and result to the cache
-    request_id, result_id = cache_manager.add_request_and_result(request, result)
-    print(f"Request ID: {request_id}, Result ID: {result_id}")
+    try:
+        # Add request and result atomically
+        request_id, result_id = cache_manager.add_request_and_result(request_data, result_data)
 
-    # Retrieve the request along with its result
-    request_with_result = cache_manager.get_request_with_result(request_id)
-    print("Retrieved Request with Result:")
-    print(request_with_result)
+        # Retrieve the saved request and result
+        request = cache_manager.get_request_with_result(request_id)
+        print("Retrieved Request:", request)
+
+    except Exception as e:
+        print(f"An error occurred while saving data: {e}")
