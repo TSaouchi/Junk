@@ -1,6 +1,7 @@
-from diskcache import Cache
+import os
+import pickle
 import uuid
-from datetime import datetime
+from diskcache import Cache
 
 
 class IDGenerator:
@@ -10,191 +11,130 @@ class IDGenerator:
         return f"{prefix}_{uuid.uuid4().hex[:8]}"
 
 
-class Client:
-    """Represents a client."""
-    def __init__(self, client_id: str, name: str, email: str):
-        self.client_id = client_id
-        self.name = name
-        self.email = email
-        self.requests = []  # List of request IDs
+class ResultRepository:
+    """Handles the storage of results in binary format."""
+    def __init__(self, cache_location: str):
+        os.makedirs(cache_location, exist_ok=True)
+        self.result_dir = os.path.join(cache_location, "results")
+        os.makedirs(self.result_dir, exist_ok=True)
+
+    def store_result(self, result_id: str, result_object: dict):
+        """Serialize and store result in binary format."""
+        result_path = os.path.join(self.result_dir, f"{result_id}.bin")
+        with open(result_path, "wb") as file:
+            pickle.dump(result_object, file)
+
+    def retrieve_result(self, result_id: str) -> dict:
+        """Deserialize and return the result object."""
+        result_path = os.path.join(self.result_dir, f"{result_id}.bin")
+        if not os.path.exists(result_path):
+            raise ValueError(f"Result with ID {result_id} does not exist.")
+        with open(result_path, "rb") as file:
+            return pickle.load(file)
 
 
-class Request:
-    """Represents a client request."""
-    def __init__(self, request_id: str, client_id: str, operation: str, parameters: list, result_id: str):
-        self.request_id = request_id
-        self.client_id = client_id
-        self.operation = operation
-        self.parameters = parameters
-        self.result_id = result_id
-        self.timestamp = datetime.utcnow().isoformat()
+class RequestRepository:
+    """Handles the storage of requests."""
+    def __init__(self, cache_location: str):
+        os.makedirs(cache_location, exist_ok=True)
+        self.cache = Cache(cache_location)
+
+    def store_request(self, request_id: str, request_data: dict):
+        """Store the request data."""
+        self.cache[request_id] = request_data
+
+    def retrieve_request(self, request_id: str) -> dict:
+        """Retrieve the request data."""
+        if request_id not in self.cache:
+            raise ValueError(f"Request with ID {request_id} does not exist.")
+        return self.cache[request_id]
+
+    def update_request(self, request_id: str, updated_data: dict):
+        """Update an existing request."""
+        self.cache[request_id] = updated_data
 
 
-class Result:
-    """Represents a result for a request."""
-    def __init__(self, result_id: str, status: str, output: any):
-        self.result_id = result_id
-        self.status = status
-        self.output = output
-        self.timestamp = datetime.utcnow().isoformat()
-
-
-class CacheRepository:
-    """Generic repository to manage DiskCache."""
-    def __init__(self, cache_name: str, cache_location: str = None):
-        # Set the cache directory
-        if cache_location:
-            os.makedirs(cache_location, exist_ok=True)  # Ensure directory exists
-            cache_path = os.path.join(cache_location, cache_name)
-        else:
-            cache_path = cache_name  # Default location in current working directory
-
-        self.cache = Cache(cache_path)
-
-    def add(self, key: str, value: any):
-        self.cache[key] = value
-
-    def get(self, key: str):
-        return self.cache.get(key)
-
-    def update(self, key: str, value: any):
-        self.cache[key] = value
-
-    def exists(self, key: str) -> bool:
-        return key in self.cache
-
-
-class ClientService:
-    """Service to manage clients."""
-    def __init__(self, client_repository: CacheRepository):
-        self.client_repository = client_repository
-
-    def add_client(self, name: str, email: str) -> str:
-        client_id = IDGenerator.generate("client")
-        client = Client(client_id, name, email)
-        self.client_repository.add(client_id, client)
-        return client_id
-
-    def get_client(self, client_id: str) -> Client:
-        client = self.client_repository.get(client_id)
-        if not client:
-            raise ValueError(f"Client with ID {client_id} does not exist.")
-        return client
-
-
-class RequestService:
-    """Service to manage requests."""
-    def __init__(self, request_repository: CacheRepository, client_service: ClientService):
+class CacheManager:
+    """Manages requests and results."""
+    def __init__(self, request_repository: RequestRepository, result_repository: ResultRepository):
         self.request_repository = request_repository
-        self.client_service = client_service
+        self.result_repository = result_repository
 
-    def add_request(self, client_id: str, operation: str, parameters: list) -> tuple:
-        # Ensure client exists
-        client = self.client_service.get_client(client_id)
+    def add_request_and_result(self, request: dict, result: dict) -> (str, str):
+        """
+        Adds a request and its corresponding result.
+        - The result is stored in binary format.
+        - The request stores a reference to the result (result ID).
 
-        # Generate IDs
+        Args:
+            request (dict): The request data.
+            result (dict): The result data.
+
+        Returns:
+            tuple: (request_id, result_id)
+        """
+        # Generate unique IDs
         request_id = IDGenerator.generate("request")
         result_id = IDGenerator.generate("result")
 
-        # Create request and save it
-        request = Request(request_id, client_id, operation, parameters, result_id)
-        self.request_repository.add(request_id, request)
+        # Store the result in binary format
+        self.result_repository.store_result(result_id, result)
 
-        # Update the client with the new request
-        client.requests.append(request_id)
-        self.client_service.client_repository.update(client_id, client)
+        # Add a reference to the result in the request
+        request["result"] = result_id
+
+        # Store the request
+        self.request_repository.store_request(request_id, request)
 
         return request_id, result_id
 
-    def get_request(self, request_id: str) -> Request:
-        request = self.request_repository.get(request_id)
-        if not request:
-            raise ValueError(f"Request with ID {request_id} does not exist.")
-        return request
+    def get_request_with_result(self, request_id: str) -> dict:
+        """
+        Retrieves a request along with its resolved result.
 
+        Args:
+            request_id (str): The unique ID of the request.
 
-class ResultService:
-    """Service to manage results."""
-    def __init__(self, result_repository: CacheRepository):
-        self.result_repository = result_repository
+        Returns:
+            dict: The request data with the result included.
+        """
+        # Retrieve the request
+        request_data = self.request_repository.retrieve_request(request_id)
 
-    def add_result(self, result_id: str, status: str, output: any):
-        result = Result(result_id, status, output)
-        self.result_repository.add(result_id, result)
+        # Retrieve the result if it exists
+        if "result" in request_data and request_data["result"]:
+            result_id = request_data["result"]
+            request_data["result"] = self.result_repository.retrieve_result(result_id)
 
-    def get_result(self, result_id: str) -> Result:
-        result = self.result_repository.get(result_id)
-        if not result:
-            raise ValueError(f"Result with ID {result_id} does not exist.")
-        return result
-
-
-class ClientRequestResultFacade:
-    """Facade to manage all operations."""
-    def __init__(self, client_service: ClientService, request_service: RequestService, result_service: ResultService):
-        self.client_service = client_service
-        self.request_service = request_service
-        self.result_service = result_service
-
-    def add_client(self, name: str, email: str) -> str:
-        return self.client_service.add_client(name, email)
-
-    def add_request(self, client_id: str, operation: str, parameters: list) -> tuple:
-        return self.request_service.add_request(client_id, operation, parameters)
-
-    def add_result(self, result_id: str, status: str, output: any):
-        self.result_service.add_result(result_id, status, output)
-
-    def get_client_data(self, client_id: str):
-        client = self.client_service.get_client(client_id)
-        requests = [self.request_service.get_request(req_id) for req_id in client.requests]
-        return {
-            "client_info": vars(client),
-            "requests": [vars(req) for req in requests]
-        }
-
-    def get_request_data(self, request_id: str):
-        request = self.request_service.get_request(request_id)
-        result = self.result_service.get_result(request.result_id)
-        return {
-            "request_data": vars(request),
-            "result_data": vars(result)
-        }
-
+        return request_data
 
 if __name__ == "__main__":
-    # Specify custom cache location
-    custom_cache_dir = r"C:\mycache\application_toto"
+    # Define cache location
+    cache_location = r"C:\mycache\application_toto"
 
     # Initialize repositories
-    client_repo = CacheRepository("clients_cache", custom_cache_dir)
-    request_repo = CacheRepository("requests_cache", custom_cache_dir)
-    result_repo = CacheRepository("results_cache", custom_cache_dir)
+    request_repo = RequestRepository(os.path.join(cache_location, "requests"))
+    result_repo = ResultRepository(cache_location)
 
-    # Initialize services
-    client_service = ClientService(client_repo)
-    request_service = RequestService(request_repo, client_service)
-    result_service = ResultService(result_repo)
+    # Initialize cache manager
+    cache_manager = CacheManager(request_repo, result_repo)
 
-    # Initialize facade
-    facade = ClientRequestResultFacade(client_service, request_service, result_service)
+    # Example: Adding a request and result
+    request = {
+        "client_name": "Alice",
+        "operation": "compute_sum",
+        "params": [10, 20, 30]
+    }
+    result = {
+        "status": "success",
+        "value": 60
+    }
 
-    # Add a client
-    client_id = facade.add_client("John Doe", "john.doe@example.com")
-    print(f"Client ID: {client_id}")
-
-    # Add a request for the client
-    request_id, result_id = facade.add_request(client_id, "compute_sum", [1, 2, 3])
+    # Add request and result to the cache
+    request_id, result_id = cache_manager.add_request_and_result(request, result)
     print(f"Request ID: {request_id}, Result ID: {result_id}")
 
-    # Add a result for the request
-    facade.add_result(result_id, "success", 6)
-    print(f"Result added for ID: {result_id}")
-
-    # Fetch client data
-    client_data = facade.get_client_data(client_id)
-    print("Client Data:", client_data)
-
-    # Fetch request data
-    request_data = facade.get_request_data(request_id)
-    print("Request Data:", request_data)
+    # Retrieve the request along with its result
+    request_with_result = cache_manager.get_request_with_result(request_id)
+    print("Retrieved Request with Result:")
+    print(request_with_result)
