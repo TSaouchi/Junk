@@ -2,11 +2,17 @@ import os
 import json
 import uuid
 import fcntl
+import pickle
 import typing
 from datetime import datetime, timedelta
 from diskcache import Cache
 from dataclasses import dataclass
-from typing import Optional, Tuple, Any
+from typing import Optional, Tuple, Any, Union, Literal
+from enum import Enum
+try:
+    import bson
+except ImportError:
+    bson = None
 
 @dataclass
 class RequestData:
@@ -30,6 +36,38 @@ class RequestData:
         data['timestamp'] = datetime.fromisoformat(data['timestamp'])
         return cls(**data)
 
+class SerializationFormat(Enum):
+    """Supported serialization formats."""
+    PICKLE = "pickle"
+    BSON = "bson"
+
+class SerializationHandler:
+    """Handles serialization and deserialization of data in different formats."""
+    
+    @staticmethod
+    def serialize(data: Any, format: SerializationFormat) -> bytes:
+        """Serialize data to binary format."""
+        if format == SerializationFormat.PICKLE:
+            return pickle.dumps(data, protocol=pickle.HIGHEST_PROTOCOL)
+        elif format == SerializationFormat.BSON:
+            if bson is None:
+                raise ImportError("BSON serialization requires the 'bson' package")
+            return bson.dumps(data)
+        else:
+            raise ValueError(f"Unsupported serialization format: {format}")
+
+    @staticmethod
+    def deserialize(data: bytes, format: SerializationFormat) -> Any:
+        """Deserialize data from binary format."""
+        if format == SerializationFormat.PICKLE:
+            return pickle.loads(data)
+        elif format == SerializationFormat.BSON:
+            if bson is None:
+                raise ImportError("BSON serialization requires the 'bson' package")
+            return bson.loads(data)
+        else:
+            raise ValueError(f"Unsupported serialization format: {format}")
+
 class IDGenerator:
     """Utility to generate unique IDs with prefix validation."""
     VALID_PREFIXES = {'request', 'result'}
@@ -41,11 +79,14 @@ class IDGenerator:
         return f"{prefix}_{uuid.uuid4().hex[:8]}"
 
 class ResultRepository:
-    """Handles the storage of results in JSON format with file locking."""
-    def __init__(self, cache_location: str, max_size_mb: int = 1000):
+    """Handles the storage of results in binary format with file locking."""
+    def __init__(self, cache_location: str, max_size_mb: int = 1000, 
+                 format: SerializationFormat = SerializationFormat.PICKLE):
         self.result_dir = os.path.join(cache_location, "results")
         os.makedirs(self.result_dir, exist_ok=True)
         self.max_size_bytes = max_size_mb * 1024 * 1024
+        self.format = format
+        self.serializer = SerializationHandler()
 
     def _check_size_limit(self, data_size: int):
         """Check if adding new data would exceed size limit."""
@@ -57,25 +98,25 @@ class ResultRepository:
         if current_size + data_size > self.max_size_bytes:
             raise ValueError(f"Storage limit of {self.max_size_bytes // 1024 // 1024}MB would be exceeded")
 
-    def store_result(self, result_id: str, result_object: dict):
-        """Store result in JSON format with file locking."""
-        result_path = os.path.join(self.result_dir, f"{result_id}.json")
+    def store_result(self, result_id: str, result_object: Any):
+        """Store result in binary format with file locking."""
+        result_path = os.path.join(self.result_dir, f"{result_id}.bin")
         
-        # Check size before writing
-        data = json.dumps(result_object).encode('utf-8')
-        self._check_size_limit(len(data))
+        # Serialize the data
+        binary_data = self.serializer.serialize(result_object, self.format)
+        self._check_size_limit(len(binary_data))
         
         with open(result_path, "wb") as file:
             # Acquire exclusive lock
             fcntl.flock(file.fileno(), fcntl.LOCK_EX)
             try:
-                file.write(data)
+                file.write(binary_data)
             finally:
                 fcntl.flock(file.fileno(), fcntl.LOCK_UN)
 
-    def retrieve_result(self, result_id: str) -> dict:
+    def retrieve_result(self, result_id: str) -> Any:
         """Retrieve result with file locking."""
-        result_path = os.path.join(self.result_dir, f"{result_id}.json")
+        result_path = os.path.join(self.result_dir, f"{result_id}.bin")
         if not os.path.exists(result_path):
             raise ValueError(f"Result with ID {result_id} does not exist.")
             
@@ -83,13 +124,14 @@ class ResultRepository:
             # Acquire shared lock
             fcntl.flock(file.fileno(), fcntl.LOCK_SH)
             try:
-                return json.loads(file.read().decode('utf-8'))
+                binary_data = file.read()
+                return self.serializer.deserialize(binary_data, self.format)
             finally:
                 fcntl.flock(file.fileno(), fcntl.LOCK_UN)
 
     def delete_result(self, result_id: str):
         """Delete result with proper error handling."""
-        result_path = os.path.join(self.result_dir, f"{result_id}.json")
+        result_path = os.path.join(self.result_dir, f"{result_id}.bin")
         try:
             if os.path.exists(result_path):
                 os.remove(result_path)
@@ -119,7 +161,7 @@ class RequestRepository:
         self.cache.expire()
 
 class CacheManager:
-    """Manages requests and results with improved error handling and validation."""
+    """Manages requests and results with binary serialization support."""
     def __init__(
         self,
         request_repository: RequestRepository,
@@ -130,22 +172,22 @@ class CacheManager:
         self.result_repository = result_repository
         self.max_request_size = max_request_size
 
-    def _validate_data_size(self, data: dict) -> int:
-        """Validate data size."""
-        size = len(json.dumps(data).encode('utf-8'))
+    def _validate_data_size(self, data: Any, format: SerializationFormat) -> int:
+        """Validate data size after serialization."""
+        size = len(SerializationHandler.serialize(data, format))
         if size > self.max_request_size:
-            raise ValueError(f"Data size ({size} bytes) exceeds maximum allowed size ({self.max_request_size} bytes)")
+            raise ValueError(f"Serialized data size ({size} bytes) exceeds maximum allowed size ({self.max_request_size} bytes)")
         return size
 
     def add_request_and_result(
         self,
         request_data: dict,
-        result_data: dict
+        result_data: Any
     ) -> Tuple[str, str]:
-        """Add request and result with validation and error handling."""
-        # Validate data sizes
-        self._validate_data_size(request_data)
-        self._validate_data_size(result_data)
+        """Add request and result with binary serialization."""
+        # Validate data sizes using the repository's serialization format
+        self._validate_data_size(request_data, self.result_repository.format)
+        self._validate_data_size(result_data, self.result_repository.format)
 
         # Generate IDs
         request_id = IDGenerator.generate("request")
@@ -162,7 +204,7 @@ class CacheManager:
             )
 
             with self.request_repository.cache.transact():
-                # Store result first
+                # Store result first in binary format
                 self.result_repository.store_result(result_id, result_data)
                 # Store request
                 self.request_repository.store_request(request_id, request)
@@ -175,7 +217,7 @@ class CacheManager:
             raise RuntimeError(f"Failed to store request and result: {str(e)}") from e
 
     def get_request_with_result(self, request_id: str) -> dict:
-        """Retrieve request and result with proper error handling."""
+        """Retrieve request and result."""
         try:
             request_data = self.request_repository.retrieve_request(request_id)
             result = None
@@ -197,8 +239,14 @@ class CacheManager:
 # Usage example
 if __name__ == "__main__":
     cache_location = "C:/mycache/application_toto"
+    
+    # Initialize repositories with BSON serialization (or use PICKLE)
     request_repo = RequestRepository(cache_location, ttl_days=30)
-    result_repo = ResultRepository(cache_location, max_size_mb=1000)
+    result_repo = ResultRepository(
+        cache_location,
+        max_size_mb=1000,
+        format=SerializationFormat.BSON  # or SerializationFormat.PICKLE
+    )
     
     cache_manager = CacheManager(
         request_repo,
@@ -206,17 +254,26 @@ if __name__ == "__main__":
         max_request_size=1024 * 1024  # 1MB
     )
     
-    # Example request and result
+    # Example request and complex result data
     request_data = {
         "client_name": "Alice",
-        "operation": "compute_sum",
+        "operation": "compute_statistics",
         "params": [10, 20, 30]
     }
     
     result_data = {
         "status": "success",
-        "value": 60,
-        "timestamp": datetime.now().isoformat()
+        "value": {
+            "mean": 20.0,
+            "median": 20.0,
+            "std_dev": 8.16,
+            "histogram": [1, 1, 1],
+            "timestamp": datetime.now()
+        },
+        "metadata": {
+            "processor_id": "cpu_01",
+            "computation_time": 0.023
+        }
     }
 
     try:
