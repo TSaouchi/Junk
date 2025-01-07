@@ -1,291 +1,368 @@
+from abc import ABC, abstractmethod
 import os
 import json
-import uuid
-import fcntl
+import hashlib
 import pickle
-import typing
+import sqlite3
+import bson
 from datetime import datetime, timedelta
-from diskcache import Cache
+from pathlib import Path
+import threading
+import logging
+from functools import wraps
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Optional, Tuple, Any, Union, Literal
-from enum import Enum
-try:
-    import bson
-except ImportError:
-    bson = None
 
 @dataclass
-class RequestData:
-    client_name: str
-    operation: str
-    params: list
-    timestamp: datetime
-    result_id: Optional[str] = None
+class CacheEntry:
+    """Value object representing a cache entry"""
+    request_key: str
+    request: dict
+    result_key: str
+    created_at: datetime
+    expires_at: datetime
 
-    def to_dict(self) -> dict:
-        return {
-            'client_name': self.client_name,
-            'operation': self.operation,
-            'params': self.params,
-            'timestamp': self.timestamp.isoformat(),
-            'result_id': self.result_id
-        }
-
+@dataclass
+class CacheConfig:
+    """Configuration value object"""
+    cache_dir: Path
+    max_cache_size_bytes: int
+    default_expiration: timedelta
+    serialization_method: str  # 'pickle', 'bson', or 'ascii'
+    
     @classmethod
-    def from_dict(cls, data: dict) -> 'RequestData':
-        data['timestamp'] = datetime.fromisoformat(data['timestamp'])
-        return cls(**data)
-
-class SerializationFormat(Enum):
-    """Supported serialization formats."""
-    PICKLE = "pickle"
-    BSON = "bson"
-
-class SerializationHandler:
-    """Handles serialization and deserialization of data in different formats."""
-    
-    @staticmethod
-    def serialize(data: Any, format: SerializationFormat) -> bytes:
-        """Serialize data to binary format."""
-        if format == SerializationFormat.PICKLE:
-            return pickle.dumps(data, protocol=pickle.HIGHEST_PROTOCOL)
-        elif format == SerializationFormat.BSON:
-            if bson is None:
-                raise ImportError("BSON serialization requires the 'bson' package")
-            return bson.dumps(data)
-        else:
-            raise ValueError(f"Unsupported serialization format: {format}")
-
-    @staticmethod
-    def deserialize(data: bytes, format: SerializationFormat) -> Any:
-        """Deserialize data from binary format."""
-        if format == SerializationFormat.PICKLE:
-            return pickle.loads(data)
-        elif format == SerializationFormat.BSON:
-            if bson is None:
-                raise ImportError("BSON serialization requires the 'bson' package")
-            return bson.loads(data)
-        else:
-            raise ValueError(f"Unsupported serialization format: {format}")
-
-class IDGenerator:
-    """Utility to generate unique IDs with prefix validation."""
-    VALID_PREFIXES = {'request', 'result'}
-    
-    @staticmethod
-    def generate(prefix: str) -> str:
-        if prefix not in IDGenerator.VALID_PREFIXES:
-            raise ValueError(f"Invalid prefix. Must be one of: {IDGenerator.VALID_PREFIXES}")
-        return f"{prefix}_{uuid.uuid4().hex[:8]}"
-
-class ResultRepository:
-    """Handles the storage of results in binary format with file locking."""
-    def __init__(self, cache_location: str, max_size_mb: int = 1000, 
-                 format: SerializationFormat = SerializationFormat.PICKLE):
-        self.result_dir = os.path.join(cache_location, "results")
-        os.makedirs(self.result_dir, exist_ok=True)
-        self.max_size_bytes = max_size_mb * 1024 * 1024
-        self.format = format
-        self.serializer = SerializationHandler()
-
-    def _check_size_limit(self, data_size: int):
-        """Check if adding new data would exceed size limit."""
-        current_size = sum(
-            os.path.getsize(os.path.join(self.result_dir, f))
-            for f in os.listdir(self.result_dir)
-            if os.path.isfile(os.path.join(self.result_dir, f))
+    def create(cls, 
+               cache_dir=".cache", 
+               max_cache_size_mb=500,
+               default_expiration_days=30,
+               serialization_method='pickle'):
+        if serialization_method not in ['pickle', 'bson', 'ascii']:
+            raise ValueError("serialization_method must be 'pickle', 'bson', or 'ascii'")
+        
+        return cls(
+            cache_dir=Path(cache_dir),
+            max_cache_size_bytes=max_cache_size_mb * 1024 * 1024,
+            default_expiration=timedelta(days=default_expiration_days),
+            serialization_method=serialization_method
         )
-        if current_size + data_size > self.max_size_bytes:
-            raise ValueError(f"Storage limit of {self.max_size_bytes // 1024 // 1024}MB would be exceeded")
 
-    def store_result(self, result_id: str, result_object: Any):
-        """Store result in binary format with file locking."""
-        result_path = os.path.join(self.result_dir, f"{result_id}.bin")
-        
-        # Serialize the data
-        binary_data = self.serializer.serialize(result_object, self.format)
-        self._check_size_limit(len(binary_data))
-        
-        with open(result_path, "wb") as file:
-            # Acquire exclusive lock
-            fcntl.flock(file.fileno(), fcntl.LOCK_EX)
+class IKeyGenerator(ABC):
+    """Strategy interface for key generation"""
+    @abstractmethod
+    def generate_key(self, data):
+        pass
+
+class ISerializer(ABC):
+    """Strategy interface for serialization"""
+    @abstractmethod
+    def serialize(self, data):
+        pass
+    
+    @abstractmethod
+    def deserialize(self, data):
+        pass
+    
+    @abstractmethod
+    def get_extension(self):
+        pass
+
+class PickleSerializer(ISerializer):
+    """Pickle-based serializer"""
+    def serialize(self, data):
+        return pickle.dumps(data)
+    
+    def deserialize(self, data):
+        return pickle.loads(data)
+    
+    def get_extension(self):
+        return '.pkl'
+
+class BsonSerializer(ISerializer):
+    """BSON-based serializer"""
+    def serialize(self, data):
+        return bson.dumps(data)
+    
+    def deserialize(self, data):
+        return bson.loads(data)
+    
+    def get_extension(self):
+        return '.bson'
+
+class AsciiSerializer(ISerializer):
+    """ASCII-based serializer using readable format"""
+    def serialize(self, data):
+        # Convert data to a readable ASCII format
+        ascii_data = json.dumps(data, indent=2, sort_keys=True)
+        return ascii_data.encode('ascii')
+    
+    def deserialize(self, data):
+        # Convert ASCII data back to original format
+        ascii_str = data.decode('ascii')
+        return json.loads(ascii_str)
+    
+    def get_extension(self):
+        return '.dat'
+
+class SHA256KeyGenerator(IKeyGenerator):
+    """Key generator using SHA256"""
+    def generate_key(self, data):
+        if isinstance(data, dict):
+            data_str = json.dumps(data, sort_keys=True)
+        else:
+            data_str = str(data)
+        return hashlib.sha256(data_str.encode()).hexdigest()
+
+class SQLiteConnection:
+    """Database connection handler"""
+    def __init__(self, db_path, lock):
+        self.db_path = db_path
+        self.lock = lock
+    
+    @contextmanager
+    def get_connection(self):
+        with self.lock:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
             try:
-                file.write(binary_data)
+                yield conn
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                raise e
             finally:
-                fcntl.flock(file.fileno(), fcntl.LOCK_UN)
+                conn.close()
 
-    def retrieve_result(self, result_id: str) -> Any:
-        """Retrieve result with file locking."""
-        result_path = os.path.join(self.result_dir, f"{result_id}.bin")
-        if not os.path.exists(result_path):
-            raise ValueError(f"Result with ID {result_id} does not exist.")
+class CacheStorage:
+    """Storage for cache entries using SQLite"""
+    def __init__(self, connection):
+        self.connection = connection
+        self._init_db()
+    
+    def _init_db(self):
+        with self.connection.get_connection() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS cache_entries (
+                    request_key TEXT PRIMARY KEY,
+                    request JSON NOT NULL,
+                    result_key TEXT NOT NULL,
+                    created_at TIMESTAMP NOT NULL,
+                    expires_at TIMESTAMP NOT NULL
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_expires_at ON cache_entries(expires_at)")
+    
+    def get(self, key):
+        with self.connection.get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM cache_entries WHERE request_key = ?", 
+                (key,)
+            ).fetchone()
             
-        with open(result_path, "rb") as file:
-            # Acquire shared lock
-            fcntl.flock(file.fileno(), fcntl.LOCK_SH)
-            try:
-                binary_data = file.read()
-                return self.serializer.deserialize(binary_data, self.format)
-            finally:
-                fcntl.flock(file.fileno(), fcntl.LOCK_UN)
+            if row:
+                return CacheEntry(
+                    request_key=row['request_key'],
+                    request=json.loads(row['request']),
+                    result_key=row['result_key'],
+                    created_at=datetime.fromisoformat(row['created_at']),
+                    expires_at=datetime.fromisoformat(row['expires_at'])
+                )
+        return None
+    
+    def put(self, entry):
+        with self.connection.get_connection() as conn:
+            conn.execute("""
+                INSERT OR REPLACE INTO cache_entries
+                (request_key, request, result_key, created_at, expires_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (
+                entry.request_key,
+                json.dumps(entry.request),
+                entry.result_key,
+                entry.created_at.isoformat(),
+                entry.expires_at.isoformat()
+            ))
+    
+    def delete(self, key):
+        with self.connection.get_connection() as conn:
+            conn.execute("DELETE FROM cache_entries WHERE request_key = ?", (key,))
 
-    def delete_result(self, result_id: str):
-        """Delete result with proper error handling."""
-        result_path = os.path.join(self.result_dir, f"{result_id}.bin")
-        try:
-            if os.path.exists(result_path):
-                os.remove(result_path)
-        except OSError as e:
-            raise RuntimeError(f"Failed to delete result {result_id}: {e}")
+class ResultStorage:
+    """Storage for result data using files"""
+    def __init__(self, results_dir, serializer):
+        self.results_dir = results_dir
+        self.serializer = serializer
+        self.results_dir.mkdir(parents=True, exist_ok=True)
+    
+    def _get_path(self, key):
+        return self.results_dir / f"{key}{self.serializer.get_extension()}"
+    
+    def get(self, key):
+        path = self._get_path(key)
+        if path.exists():
+            with open(path, 'rb') as f:
+                return self.serializer.deserialize(f.read())
+        return None
+    
+    def put(self, key, value):
+        path = self._get_path(key)
+        with open(path, 'wb') as f:
+            f.write(self.serializer.serialize(value))
+    
+    def delete(self, key):
+        path = self._get_path(key)
+        if path.exists():
+            path.unlink()
 
-class RequestRepository:
-    """Handles the storage of requests with TTL."""
-    def __init__(self, cache_location: str, ttl_days: int = 30):
-        os.makedirs(cache_location, exist_ok=True)
-        self.cache = Cache(cache_location)
-        self.ttl = ttl_days * 24 * 60 * 60  # Convert days to seconds
-
-    def store_request(self, request_id: str, request_data: RequestData):
-        """Store request with TTL."""
-        self.cache.set(request_id, request_data.to_dict(), expire=self.ttl)
-
-    def retrieve_request(self, request_id: str) -> RequestData:
-        """Retrieve request data."""
-        data = self.cache.get(request_id)
-        if data is None:
-            raise ValueError(f"Request with ID {request_id} does not exist or has expired.")
-        return RequestData.from_dict(data)
-
-    def cleanup_expired(self):
-        """Clean up expired entries."""
-        self.cache.expire()
+class ReferenceCounter:
+    """Reference counting manager"""
+    def __init__(self, connection):
+        self.connection = connection
+        self._init_db()
+    
+    def _init_db(self):
+        with self.connection.get_connection() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS result_references (
+                    result_key TEXT PRIMARY KEY,
+                    reference_count INTEGER NOT NULL DEFAULT 0
+                )
+            """)
+    
+    def increment(self, key):
+        with self.connection.get_connection() as conn:
+            conn.execute("""
+                INSERT INTO result_references (result_key, reference_count)
+                VALUES (?, 1)
+                ON CONFLICT(result_key) DO UPDATE SET
+                reference_count = reference_count + 1
+            """, (key,))
+    
+    def decrement(self, key):
+        with self.connection.get_connection() as conn:
+            conn.execute("""
+                UPDATE result_references
+                SET reference_count = reference_count - 1
+                WHERE result_key = ?
+            """, (key,))
+            
+            row = conn.execute(
+                "SELECT reference_count FROM result_references WHERE result_key = ?",
+                (key,)
+            ).fetchone()
+            
+            count = row['reference_count'] if row else 0
+            if count <= 0:
+                conn.execute("DELETE FROM result_references WHERE result_key = ?", (key,))
+            
+            return count
 
 class CacheManager:
-    """Manages requests and results with binary serialization support."""
-    def __init__(
-        self,
-        request_repository: RequestRepository,
-        result_repository: ResultRepository,
-        max_request_size: int = 1024 * 1024  # 1MB
-    ):
-        self.request_repository = request_repository
-        self.result_repository = result_repository
-        self.max_request_size = max_request_size
-
-    def _validate_data_size(self, data: Any, format: SerializationFormat) -> int:
-        """Validate data size after serialization."""
-        size = len(SerializationHandler.serialize(data, format))
-        if size > self.max_request_size:
-            raise ValueError(f"Serialized data size ({size} bytes) exceeds maximum allowed size ({self.max_request_size} bytes)")
-        return size
-
-    def add_request_and_result(
-        self,
-        request_data: dict,
-        result_data: Any
-    ) -> Tuple[str, str]:
-        """Add request and result with binary serialization."""
-        # Validate data sizes using the repository's serialization format
-        self._validate_data_size(request_data, self.result_repository.format)
-        self._validate_data_size(result_data, self.result_repository.format)
-
-        # Generate IDs
-        request_id = IDGenerator.generate("request")
-        result_id = IDGenerator.generate("result")
-
+    """Main cache manager"""
+    def __init__(self, config, cache_storage, result_storage, 
+                 reference_counter, key_generator, logger):
+        self.config = config
+        self.cache_storage = cache_storage
+        self.result_storage = result_storage
+        self.reference_counter = reference_counter
+        self.key_generator = key_generator
+        self.logger = logger
+    
+    def get_cached_result(self, request):
         try:
-            # Create RequestData object
-            request = RequestData(
-                client_name=request_data['client_name'],
-                operation=request_data['operation'],
-                params=request_data['params'],
-                timestamp=datetime.now(),
-                result_id=result_id
+            request_key = self.key_generator.generate_key(request)
+            entry = self.cache_storage.get(request_key)
+            
+            if not entry or entry.expires_at < datetime.now():
+                return None
+            
+            return self.result_storage.get(entry.result_key)
+            
+        except Exception as e:
+            self.logger.error(f"Error retrieving cached result: {str(e)}")
+            return None
+    
+    def cache_request(self, request, result):
+        try:
+            request_key = self.key_generator.generate_key(request)
+            result_key = self.key_generator.generate_key(result)
+            
+            # Save result
+            self.result_storage.put(result_key, result)
+            
+            # Create cache entry
+            entry = CacheEntry(
+                request_key=request_key,
+                request=request,
+                result_key=result_key,
+                created_at=datetime.now(),
+                expires_at=datetime.now() + self.config.default_expiration
             )
-
-            with self.request_repository.cache.transact():
-                # Store result first in binary format
-                self.result_repository.store_result(result_id, result_data)
-                # Store request
-                self.request_repository.store_request(request_id, request)
-
-            return request_id, result_id
-
+            
+            self.cache_storage.put(entry)
+            self.reference_counter.increment(result_key)
+            
+            self._cleanup_cache()
+            
         except Exception as e:
-            # Cleanup in case of error
-            self.result_repository.delete_result(result_id)
-            raise RuntimeError(f"Failed to store request and result: {str(e)}") from e
+            self.logger.error(f"Error caching request: {str(e)}")
+            raise
 
-    def get_request_with_result(self, request_id: str) -> dict:
-        """Retrieve request and result."""
+    def _cleanup_cache(self):
+        """Clean up expired entries and manage cache size"""
         try:
-            request_data = self.request_repository.retrieve_request(request_id)
-            result = None
-            
-            if request_data.result_id:
-                result = self.result_repository.retrieve_result(request_data.result_id)
-            
-            response = request_data.to_dict()
-            response['result'] = result
-            return response
-
+            # Implementation of cleanup logic
+            pass
         except Exception as e:
-            raise RuntimeError(f"Failed to retrieve request {request_id}: {str(e)}") from e
+            self.logger.error(f"Error during cache cleanup: {str(e)}")
 
-    def cleanup(self):
-        """Perform cleanup operations."""
-        self.request_repository.cleanup_expired()
-
-# Usage example
-if __name__ == "__main__":
-    cache_location = "C:/mycache/application_toto"
-    
-    # Initialize repositories with BSON serialization (or use PICKLE)
-    request_repo = RequestRepository(cache_location, ttl_days=30)
-    result_repo = ResultRepository(
-        cache_location,
-        max_size_mb=1000,
-        format=SerializationFormat.BSON  # or SerializationFormat.PICKLE
-    )
-    
-    cache_manager = CacheManager(
-        request_repo,
-        result_repo,
-        max_request_size=1024 * 1024  # 1MB
-    )
-    
-    # Example request and complex result data
-    request_data = {
-        "client_name": "Alice",
-        "operation": "compute_statistics",
-        "params": [10, 20, 30]
-    }
-    
-    result_data = {
-        "status": "success",
-        "value": {
-            "mean": 20.0,
-            "median": 20.0,
-            "std_dev": 8.16,
-            "histogram": [1, 1, 1],
-            "timestamp": datetime.now()
-        },
-        "metadata": {
-            "processor_id": "cpu_01",
-            "computation_time": 0.023
+class CacheFactory:
+    """Factory for creating cache instances"""
+    @staticmethod
+    def create_cache(config=None):
+        if not config:
+            config = CacheConfig.create()
+        
+        # Create basic components
+        lock = threading.Lock()
+        logger = logging.getLogger("CacheManager")
+        
+        # Create database connection
+        db_connection = SQLiteConnection(config.cache_dir / "cache.db", lock)
+        
+        # Select serializer based on configuration
+        serializers = {
+            'pickle': PickleSerializer(),
+            'bson': BsonSerializer(),
+            'ascii': AsciiSerializer()
         }
-    }
+        serializer = serializers[config.serialization_method]
+        
+        # Create components
+        cache_storage = CacheStorage(db_connection)
+        result_storage = ResultStorage(config.cache_dir / "results", serializer)
+        reference_counter = ReferenceCounter(db_connection)
+        key_generator = SHA256KeyGenerator()
+        
+        return CacheManager(
+            config=config,
+            cache_storage=cache_storage,
+            result_storage=result_storage,
+            reference_counter=reference_counter,
+            key_generator=key_generator,
+            logger=logger
+        )
 
-    try:
-        # Add request and result atomically
-        request_id, result_id = cache_manager.add_request_and_result(request_data, result_data)
-
-        # Retrieve the saved request and result
-        request = cache_manager.get_request_with_result(request_id)
-        print("Retrieved Request:", request)
-
-        # Cleanup expired entries
-        cache_manager.cleanup()
-
-    except Exception as e:
-        print(f"An error occurred: {e}")
+def cache_request_decorator(cache):
+    """Decorator for automatic request caching"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(request, *args, **kwargs):
+            cached_result = cache.get_cached_result(request)
+            if cached_result is not None:
+                return cached_result
+            
+            result = func(request, *args, **kwargs)
+            cache.cache_request(request, result)
+            return result
+        return wrapper
+    return decorator
