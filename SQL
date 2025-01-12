@@ -1,0 +1,30 @@
+def find_entry_in_table_2_elegant(db_connection, request_unique_value):
+    # Convert input dictionary into a list of tuples [(key1, value1), (key2, value2), ...]
+    input_pairs = [(key, value) for key, value in request_unique_value.items()]
+
+    # Construct the VALUES part of the CTE dynamically
+    values_placeholder = ",".join(["(?, ?)"] * len(input_pairs))
+
+    query = f"""
+    WITH json_input(key, value) AS (
+        VALUES {values_placeholder}
+    )
+    SELECT reference_to_result
+    FROM table_2
+    WHERE EXISTS (
+        SELECT 1
+        FROM json_input
+        JOIN json_each(table_2.request_unique_value) AS kv
+        ON kv.key = json_input.key AND kv.value = json_input.value
+    );
+    """
+
+    # Flatten the list of tuples into a single list of parameters
+    params = [item for pair in input_pairs for item in pair]
+
+    # Execute the query
+    cursor = db_connection.cursor()
+    cursor.execute(query, params)
+    result = cursor.fetchone()
+
+    return result[0] if result else None
