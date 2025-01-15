@@ -1,50 +1,50 @@
 import asyncio
 from api_engine.api_manager import APIManager
-from yahoo_finance_client import YahooFinanceClient
+from api_engine.clients.api_x_client import ApiXClient
 
 async def main():
-    # Initialize API Manager
     api_manager = APIManager()
+    api_manager.register_client("api_x", ApiXClient(base_url="https://api.example.com"))
 
-    # Register Yahoo Finance client
-    api_manager.register_client("yahoo_finance", YahooFinanceClient())
-
-    # List registered clients
-    clients = api_manager.list_clients()
-    print("Registered Clients:", clients)
-
-    # Fetch data using GET
+    # GET Example
     response_get = await api_manager.execute(
-        client_name="yahoo_finance",
+        client_name="api_x",
         method="fetch",
-        endpoint="/GOOGL",
-        params={"interval": "1d", "range": "1mo"}
+        endpoint="/stocks",
+        params={"symbol": "GOOGL", "interval": "1d"},
+        headers={"Authorization": "Bearer YOUR_API_TOKEN"}
     )
     print("GET Response:", response_get)
 
-    # POST request example
+    # POST Example
     response_post = await api_manager.execute(
-        client_name="yahoo_finance",
+        client_name="api_x",
         method="post",
-        endpoint="/data",
-        data={"key": "value"}
+        endpoint="/stocks/add",
+        data={"symbol": "GOOGL", "price": 2734.25},
+        params={"api_key": "your_api_key"},
+        headers={"Content-Type": "application/json"}
     )
     print("POST Response:", response_post)
 
-    # PUT request example
-    response_put = await api_manager.execute(
-        client_name="yahoo_finance",
-        method="put",
-        endpoint="/update",
-        data={"field": "updated_value"}
+    # PATCH Example
+    response_patch = await api_manager.execute(
+        client_name="api_x",
+        method="update",
+        endpoint="/stocks/123",
+        data={"price": 2800.00},
+        method="PATCH",
+        headers={"Authorization": "Bearer YOUR_API_TOKEN"}
     )
-    print("PUT Response:", response_put)
+    print("PATCH Response:", response_patch)
 
-    # DELETE request example
+    # DELETE Example
     response_delete = await api_manager.execute(
-        client_name="yahoo_finance",
+        client_name="api_x",
         method="delete",
-        endpoint="/remove"
+        endpoint="/stocks/123",
+        params={"api_key": "your_api_key"},
+        headers={"Authorization": "Bearer YOUR_API_TOKEN"}
     )
     print("DELETE Response:", response_delete)
 
