@@ -26,7 +26,7 @@ async def main():
 # Run the asynchronous main function
 asyncio.run(main())
 
-
+----------------------------------------------------------------------------------------------------
 import asyncio
 from coherence import Session, Options, SessionLifecycleEvent
 
@@ -80,3 +80,48 @@ async def main():
 # Run the asynchronous main function
 asyncio.run(main())
 
+---------------------------------------------------------------------------
+import asyncio
+
+async def check_connection(host, port):
+    try:
+        # Try to establish a connection to the host and port
+        reader, writer = await asyncio.open_connection(host, port)
+        print(f"Connection established with {host}:{port}")
+        writer.close()  # Close the connection after the check
+        await writer.wait_closed()
+        return True
+    except Exception as e:
+        print(f"Connection failed: {e}")
+        return False
+
+# Usage
+address = 'your_ip_address'
+port = 'your_port_number'
+asyncio.run(check_connection(address, port))
+
+-----------------------------------------------------------------------------
+import grpc
+from grpc_health_v1 import health_pb2_grpc, health_pb2
+
+def check_grpc_health(address):
+    # Create a gRPC channel and stub for the health check service
+    channel = grpc.insecure_channel(address)
+    stub = health_pb2_grpc.HealthStub(channel)
+
+    try:
+        # Make the health check request
+        response = stub.Check(health_pb2.HealthCheckRequest(service=''))
+        if response.status == health_pb2.HealthCheckResponse.Serving:
+            print("gRPC server is healthy and serving requests.")
+            return True
+        else:
+            print("gRPC server is not healthy.")
+            return False
+    except grpc.RpcError as e:
+        print(f"Error during health check: {e}")
+        return False
+
+# Usage
+address = 'your_ip_address:your_port_number'
+check_grpc_health(address)
