@@ -1,71 +1,55 @@
-def find_attribute(obj, target_attr, visited=None):
+def deep_vars(obj, depth=1, visited=None):
     """
-    Recursively search for an attribute in an object and its nested attributes.
+    Recursively extract attributes of an object up to a given depth.
     
     Args:
-        obj: The object to search through
-        target_attr: The name of the attribute to find
-        visited: Set to keep track of visited objects to avoid infinite recursion
-        
+        obj: The object to extract attributes from.
+        depth (int): The maximum depth to expand nested attributes.
+        visited (set): A set to track visited objects and avoid infinite recursion.
+    
     Returns:
-        tuple: (found_value, path_to_attribute) or (None, None) if not found
+        dict: A dictionary representation of the object's attributes.
     """
+    if depth < 0 or obj is None:
+        return None
+    
     if visited is None:
         visited = set()
     
-    # Avoid circular references and already visited objects
     obj_id = id(obj)
     if obj_id in visited:
-        return None, None
+        return "<Circular Reference>"  # Prevent infinite loops in cyclic references
     visited.add(obj_id)
-    
-    # Get all attributes of the object
-    try:
-        attributes = dir(obj)
-    except Exception:
-        return None, None
-    
-    # First, check direct attributes
-    if target_attr in attributes:
-        try:
-            return getattr(obj, target_attr), [target_attr]
-        except Exception:
-            pass
-    
-    # Then recursively check nested attributes
-    for attr in attributes:
-        try:
-            value = getattr(obj, attr)
-            
-            # Skip methods and built-in attributes
-            if callable(value) or attr.startswith('__'):
-                continue
-            
-            # Recursively search in this attribute
-            found_value, path = find_attribute(value, target_attr, visited)
-            if found_value is not None:
-                return found_value, [attr] + path
-                
-        except Exception:
-            continue
-            
-    return None, None
 
-# Example usage
-class NestedClass:
+    if not hasattr(obj, '__dict__'):  # If not an object with attributes, return directly
+        return obj
+
+    result = {}
+    for key, value in vars(obj).items():
+        if hasattr(value, '__dict__') and depth > 0:  # If it's an object, expand recursively
+            result[key] = deep_vars(value, depth - 1, visited)
+        else:
+            result[key] = value  # Primitive values are directly assigned
+
+    return result
+
+# Example Usage
+class Inner:
     def __init__(self):
-        self.hidden_value = 42
+        self.inner_attr = 42
+        self.deep = "nested_value"
 
-class MainClass:
+class Middle:
     def __init__(self):
-        self.nested = NestedClass()
-        self.some_value = "test"
+        self.middle_attr = Inner()
+        self.some_list = [1, 2, 3]  # Lists won't be expanded
 
-# Example of how to use it
-obj = MainClass()
-value, path = find_attribute(obj, 'hidden_value')
-if value is not None:
-    print(f"Found value: {value}")
-    print(f"Path to value: {' -> '.join(path)}")
-else:
-    print("Attribute not found")
+class Outer:
+    def __init__(self):
+        self.outer_attr = Middle()
+        self.direct_value = "hello"
+
+obj = Outer()
+
+# Expand with depth control
+print(deep_vars(obj, depth=2))  # Expands up to 2 levels
