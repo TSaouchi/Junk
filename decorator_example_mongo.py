@@ -1,5 +1,8 @@
+import signal
+import datetime
 from functools import wraps
 from pymongo.errors import PyMongoError
+
 
 class CacheProduct:
     _initialized = False  # Class-level variable to track initialization
@@ -9,6 +12,7 @@ class CacheProduct:
             # Perform one-time initialization
             self.setup_shared_resources(username, password, db_name, host, port)
             CacheProduct._initialized = True
+            self._setup_graceful_shutdown()
 
     def setup_shared_resources(self, username: str, password: str, db_name: str, host: str, port: int):
         """
@@ -26,6 +30,24 @@ class CacheProduct:
 
         # Data Inserter for caching
         self.data_inserter = MongoDataInserter(self.connection_pool, db_name=self.db_name)
+
+    def _setup_graceful_shutdown(self):
+        """
+        Set up signal handlers for graceful shutdown.
+        """
+        signal.signal(signal.SIGTERM, self._shutdown)
+        signal.signal(signal.SIGINT, self._shutdown)
+
+    def _shutdown(self, signum, frame):
+        """
+        Clean up shared resources on shutdown.
+        """
+        print("Shutting down gracefully...")
+        if hasattr(self, 'connection_pool') and self.connection_pool:
+            self.connection_pool.close()  # Close MongoDB connections
+            print("MongoDB connection pool closed.")
+        CacheProduct._initialized = False
+        exit(0)
 
     def __call__(self, func):
         @wraps(func)
