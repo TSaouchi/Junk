@@ -1,18 +1,21 @@
 import signal
 import datetime
 from functools import wraps
+from threading import Lock
 from pymongo.errors import PyMongoError
 
 
 class CacheProduct:
     _initialized = False  # Class-level variable to track initialization
+    _init_lock = Lock()   # Lock to make initialization thread-safe
 
     def __init__(self, username: str, password: str, db_name: str, host: str = 'localhost', port: int = 27017):
-        if not CacheProduct._initialized:
-            # Perform one-time initialization
-            self.setup_shared_resources(username, password, db_name, host, port)
-            CacheProduct._initialized = True
-            self._setup_graceful_shutdown()
+        with CacheProduct._init_lock:  # Ensure thread-safe initialization
+            if not CacheProduct._initialized:
+                # Perform one-time initialization
+                self.setup_shared_resources(username, password, db_name, host, port)
+                CacheProduct._initialized = True
+                self._setup_graceful_shutdown()
 
     def setup_shared_resources(self, username: str, password: str, db_name: str, host: str, port: int):
         """
@@ -44,9 +47,10 @@ class CacheProduct:
         """
         print("Shutting down gracefully...")
         if hasattr(self, 'connection_pool') and self.connection_pool:
-            self.connection_pool.close()  # Close MongoDB connections
-            print("MongoDB connection pool closed.")
-        CacheProduct._initialized = False
+            with CacheProduct._init_lock:  # Ensure thread-safe cleanup
+                self.connection_pool.close()  # Close MongoDB connections
+                print("MongoDB connection pool closed.")
+                CacheProduct._initialized = False
         exit(0)
 
     def __call__(self, func):
