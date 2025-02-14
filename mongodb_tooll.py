@@ -167,7 +167,17 @@ class MongoQueryExecutor:
             return list(cursor)
         except PyMongoError as e:
             raise Exception(f"Error executing find query: {e}")
-
+            
+    def aggregate(self, collection_name: str, pipeline: list, batch_size: int = 1000) -> list:
+        """
+        Executes an aggregation query with the specified pipeline.
+        """
+        try:
+            collection = self.db[collection_name]
+            cursor = collection.aggregate(pipeline, batchSize=batch_size)
+            return list(cursor)
+        except PyMongoError as e:
+            raise Exception(f"Error executing aggregation query: {e}")
 
 # ---------------------------
 # Data Inserter with Bulk Write and Index Management
