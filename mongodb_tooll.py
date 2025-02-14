@@ -3,6 +3,7 @@ import datetime
 from pymongo import MongoClient, ASCENDING, InsertOne
 from pymongo.errors import PyMongoError, BulkWriteError
 
+
 # ---------------------------
 # Authentication Manager (Singleton)
 # ---------------------------
@@ -46,6 +47,7 @@ class MongoAuth:
             return f"mongodb://{self.username}:{self.password}@{self.host}:{self.port}/?authSource={self.auth_db}"
         return f"mongodb://{self.host}:{self.port}/"
 
+
 # ---------------------------
 # Connection Pool Manager
 # ---------------------------
@@ -83,6 +85,61 @@ class MongoConnectionPool:
             raise ValueError("Database name must be provided either as argument or in db_params")
         return self.client[db_name]
 
+
+# ---------------------------
+# Data Deleter with Extended Deletion and Collection Drop Logic
+# ---------------------------
+class MongoDataDeleter:
+    """
+    Handles deletion operations on MongoDB, including dropping empty collections.
+    """
+    def __init__(self, connection_pool: MongoConnectionPool, db_name: str):
+        self.db = connection_pool.get_database(db_name)
+
+    def delete_one(self, collection_name: str, query: dict):
+        """
+        Deletes a single document matching the query.
+        """
+        collection = self.db[collection_name]
+        try:
+            result = collection.delete_one(query)
+            return result.deleted_count
+        except PyMongoError as e:
+            raise Exception(f"Error deleting document: {e}")
+
+    def delete_many(self, collection_name: str, query: dict):
+        """
+        Deletes multiple documents matching the query.
+        """
+        collection = self.db[collection_name]
+        try:
+            result = collection.delete_many(query)
+            return result.deleted_count
+        except PyMongoError as e:
+            raise Exception(f"Error deleting multiple documents: {e}")
+
+    def drop_collection(self, collection_name: str):
+        """
+        Drops an entire collection.
+        """
+        try:
+            self.db.drop_collection(collection_name)
+            print(f"Collection '{collection_name}' dropped successfully.")
+        except PyMongoError as e:
+            raise Exception(f"Error dropping collection: {e}")
+
+    def drop_empty_collections(self):
+        """
+        Drops all empty collections in the database.
+        """
+        try:
+            for collection_name in self.db.list_collection_names():
+                if self.db[collection_name].estimated_document_count() == 0:
+                    self.drop_collection(collection_name)
+        except PyMongoError as e:
+            raise Exception(f"Error dropping empty collections: {e}")
+
+
 # ---------------------------
 # Query Executor
 # ---------------------------
@@ -110,6 +167,7 @@ class MongoQueryExecutor:
             return list(cursor)
         except PyMongoError as e:
             raise Exception(f"Error executing find query: {e}")
+
 
 # ---------------------------
 # Data Inserter with Bulk Write and Index Management
@@ -190,95 +248,3 @@ class MongoDataInserter:
                 raise ValueError("index_fields must be either a string or a list of tuples")
         except PyMongoError as e:
             raise Exception(f"Error ensuring index on {collection_name}: {e}")
-
-# ---------------------------
-# Example Usage
-# ---------------------------
-if __name__ == "__main__":
-    # Schematic Overview:
-    # ┌──────────────────────────┐
-    # │ Broker Worker Process    │
-    # │                          │
-    # │  ┌────────────────────┐  │
-    # │  │ MongoAuth Singleton│◄─┐
-    # │  └────────────────────┘  │
-    # │           │              │
-    # │  ┌────────────────────┐  │
-    # │  │ MongoConnectionPool│──┼──> Creates a tuned MongoClient
-    # │  └────────────────────┘  │
-    # │           │              │
-    # │  ┌────────────────────┐  │
-    # │  │ MongoQueryExecutor │  │
-    # │  └────────────────────┘  │
-    # │           │              │
-    # │  ┌────────────────────┐  │
-    # │  │ MongoDataInserter  │  │
-    # │  └────────────────────┘  │
-    # └──────────────────────────┘
-
-    # Initialize authentication
-    auth = MongoAuth(username="myUser", password="myPassword",
-                     host="localhost", port=27017, auth_db="admin")
-    
-    # Create connection pool with tuned parameters and specify a default database
-    pool = MongoConnectionPool(auth, db_params={'default_db': 'brokerDB'},
-                               maxPoolSize=200, minPoolSize=20, waitQueueTimeoutMS=1000, connectTimeoutMS=3000)
-    
-    # Specify the target database name
-    db_name = "brokerDB"
-    
-    # Initialize Query Executor and Data Inserter
-    query_executor = MongoQueryExecutor(pool, db_name)
-    data_inserter = MongoDataInserter(pool, db_name)
-    
-    # Ensure indexes are created only once (outside of individual operations)
-    try:
-        data_inserter.ensure_index("your_collection", "toto", index_name="idx_toto")
-    except Exception as e:
-        print(e)
-    
-    # Create a TTL index on the 'expires_at' field to automatically expire documents
-    try:
-        data_inserter.create_ttl_index("your_collection", field_name="expires_at", expireAfterSeconds=0)
-    except Exception as e:
-        print(e)
-    
-    # Example: Insert a document with a TTL of 7 days (7*24*3600 seconds)
-    ttl_seconds = 7 * 24 * 3600
-    document = {
-        "toto": {"key1": "value1", "key2": "value2"},
-        "result": {"some_key": "some_value"},
-        "created_at": datetime.datetime.utcnow()
-    }
-    try:
-        inserted_id = data_inserter.insert_one("your_collection", document, ttl=ttl_seconds)
-        print(f"Document inserted with ID: {inserted_id}")
-    except Exception as e:
-        print(e)
-    
-    # Example: Bulk insert multiple documents
-    documents = [
-        {
-            "toto": {"key1": "bulkValueA", "key2": "bulkValueB"},
-            "result": {"some_key": "some_value"},
-            "created_at": datetime.datetime.utcnow()
-        },
-        {
-            "toto": {"key1": "bulkValueC", "key2": "bulkValueD"},
-            "result": {"some_key": "some_value"},
-            "created_at": datetime.datetime.utcnow()
-        }
-    ]
-    try:
-        count = data_inserter.bulk_insert("your_collection", documents, ttl=ttl_seconds)
-        print(f"Bulk insert completed. Inserted count: {count}")
-    except Exception as e:
-        print(e)
-    
-    # Example: Execute a query with a reasonable batch size to process results efficiently
-    query = {"toto.key1": "value1"}
-    try:
-        results = query_executor.find("your_collection", query, batch_size=500)
-        print("Query Results:", results)
-    except Exception as e:
-        print(e)
