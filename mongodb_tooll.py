@@ -272,3 +272,50 @@ class MongoDataInserter:
                 raise ValueError("index_fields must be either a string or a list of tuples")
         except PyMongoError as e:
             raise Exception(f"Error ensuring index on {collection_name}: {e}")
+
+# ---------------------------
+# Data Updater
+# ---------------------------
+class MongoDataUpdater:
+    """
+    Handles update operations on MongoDB.
+    Supports single document updates, multiple updates, and field updates.
+    """
+    def __init__(self, connection_pool: MongoConnectionPool, db_name: str):
+        self.db = connection_pool.get_database(db_name)
+
+    def update_one(self, collection_name: str, query: dict, update: dict, upsert: bool = False):
+        """
+        Updates a single document matching the query with the specified update.
+        If no document is found, it optionally performs an upsert.
+        """
+        collection = self.db[collection_name]
+        try:
+            result = collection.update_one(query, update, upsert=upsert)
+            return result.modified_count, result.upserted_id
+        except PyMongoError as e:
+            raise Exception(f"Error updating document: {e}")
+
+    def update_many(self, collection_name: str, query: dict, update: dict, upsert: bool = False):
+        """
+        Updates multiple documents matching the query with the specified update.
+        If no documents are found, it optionally performs upsert.
+        """
+        collection = self.db[collection_name]
+        try:
+            result = collection.update_many(query, update, upsert=upsert)
+            return result.modified_count
+        except PyMongoError as e:
+            raise Exception(f"Error updating multiple documents: {e}")
+
+    def replace_one(self, collection_name: str, query: dict, replacement: dict, upsert: bool = False):
+        """
+        Replaces a single document matching the query with the provided replacement document.
+        If no document is found, it optionally performs an upsert.
+        """
+        collection = self.db[collection_name]
+        try:
+            result = collection.replace_one(query, replacement, upsert=upsert)
+            return result.modified_count, result.upserted_id
+        except PyMongoError as e:
+            raise Exception(f"Error replacing document: {e}")
