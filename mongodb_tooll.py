@@ -54,13 +54,13 @@ class MongoAuth:
 class MongoConnectionPool:
     """
     Manages the MongoClient instance with tuned connection pool parameters.
+    Includes a health check function to verify connectivity.
     """
     def __init__(self, auth: MongoAuth, db_params: dict = None,
                  maxPoolSize: int = 200, minPoolSize: int = 20,
                  waitQueueTimeoutMS: int = 1000, connectTimeoutMS: int = 3000,
                  socketTimeoutMS: int = 5000, **kwargs):
         self.uri = auth.get_connection_uri()
-        # Pool parameters combined into one dictionary
         pool_kwargs = {
             'maxPoolSize': maxPoolSize,
             'minPoolSize': minPoolSize,
@@ -69,11 +69,25 @@ class MongoConnectionPool:
             'socketTimeoutMS': socketTimeoutMS,
         }
         pool_kwargs.update(kwargs)
+        
         try:
             self.client = MongoClient(self.uri, **pool_kwargs)
+            self.check_connection()  # Call the connection check on initialization
         except PyMongoError as e:
             raise Exception(f"Error creating MongoClient: {e}")
+        
         self.db_params = db_params or {}
+
+    def check_connection(self) -> bool:
+        """
+        Checks if the MongoDB connection is alive.
+        Returns True if connected, raises an exception otherwise.
+        """
+        try:
+            self.client.admin.command('ping')
+            return True  # Connection is alive
+        except PyMongoError as e:
+            raise Exception(f"MongoDB connection check failed: {e}")
 
     def get_database(self, db_name: str) -> 'Database':
         """
