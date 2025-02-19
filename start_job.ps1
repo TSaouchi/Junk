@@ -7,7 +7,11 @@ Start-Job -ScriptBlock {
 Start-Job -ScriptBlock {
     & "app.exe" -listen-port=12345 -wokers=localhost:12356 *> broker_log.log
 }
-
+Start-Job -ScriptBlock {
+    Start-Process -NoNewWindow -FilePath "C:\path\to\app.exe" -ArgumentList "-listen-port=12345 -wokers=localhost:12356" `
+        -RedirectStandardOutput "C:\path\to\logs\broker_log.log" `
+        -RedirectStandardError "C:\path\to\logs\broker_log.log"
+}
 # Check running jobs
 Get-Job
 
