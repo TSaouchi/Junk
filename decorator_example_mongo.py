@@ -6,16 +6,24 @@ from pymongo.errors import PyMongoError
 
 
 class CacheProduct:
-    _initialized = False  # Class-level variable to track initialization
-    _init_lock = Lock()   # Lock to make initialization thread-safe
+    _instance = None  # Store the singleton instance
+    _init_lock = Lock()  # Thread-safe initialization
+
+    def __new__(cls, username: str, password: str, db_name: str, host: str = 'localhost', port: int = 27017):
+        if cls._instance is None:
+            with cls._init_lock:
+                if cls._instance is None:  # Double-checked locking for thread safety
+                    cls._instance = super(CacheProduct, cls).__new__(cls)
+        return cls._instance  # Always return the same instance
 
     def __init__(self, username: str, password: str, db_name: str, host: str = 'localhost', port: int = 27017):
-        with CacheProduct._init_lock:  # Ensure thread-safe initialization
-            if not CacheProduct._initialized:
-                # Perform one-time initialization
-                self.setup_shared_resources(username, password, db_name, host, port)
-                CacheProduct._initialized = True
-                self._setup_graceful_shutdown()
+        if not hasattr(self, "_initialized"):  # Ensure init runs once
+            with CacheProduct._init_lock:
+                if not hasattr(self, "_initialized"):
+                    # Perform one-time initialization
+                    self.setup_shared_resources(username, password, db_name, host, port)
+                    self._initialized = True  # Mark as initialized
+                    self._setup_graceful_shutdown()
 
     def setup_shared_resources(self, username: str, password: str, db_name: str, host: str, port: int):
         """
