@@ -1,15 +1,16 @@
 import unittest
-from unittest.mock import patch, MagicMock
 import json
-from pathlib import Path
-import tempfile
-import time
 import os
+import tempfile
 import threading
 import multiprocessing
+import time
+import io
+from pathlib import Path
+from contextlib import redirect_stdout
 
-# The code under test (import your script here)
-from your_script import write_to_file, file_lock, LOCK_DIR
+
+# import script to test here 
 
 # Helper function for process-based writes.
 def process_write(file_path_str, data):
