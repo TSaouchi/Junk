@@ -1,0 +1,6 @@
+db.collection.aggregate([
+  { "$unwind": "$toto" },
+  { "$group": { "_id": "$toto", "count": { "$sum": 1 }, "docs": { "$addToSet": "$_id" } } },
+  { "$match": { "count": { "$gt": 1 } } },
+  { "$project": { "_id": 0, "duplicate_key_value": "$_id", "documents": "$docs", "count": 1 } }
+])
