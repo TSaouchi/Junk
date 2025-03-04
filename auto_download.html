@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Download Files</title>
+</head>
+<body>
+    <h1>File Downloader</h1>
+
+    <!-- Input fields for URL, pattern, file IDs, and extension -->
+    <div>
+        <label for="url">API URL:</label>
+        <input type="text" id="url" placeholder="Enter the base URL" required>
+    </div>
+    <div>
+        <label for="pattern">Pattern:</label>
+        <input type="text" id="pattern" placeholder="Enter the filename pattern" required>
+    </div>
+    <div>
+        <label for="fileIds">File IDs (comma-separated):</label>
+        <input type="text" id="fileIds" placeholder="Enter file IDs separated by commas" required>
+    </div>
+    <div>
+        <label for="extension">File Extension:</label>
+        <input type="text" id="extension" placeholder="Enter the file extension (e.g., csv, txt)" required>
+    </div>
+
+    <!-- Button to trigger the download -->
+    <button onclick="startDownload()">Download Files</button>
+
+    <script>
+        async function downloadFile(fileId, url, pattern, extension) {
+            const fileUrl = `${url}/storage/substorage/${fileId}/download`;
+
+            // Construct the filename using the provided pattern and extension
+            const fileName = `${pattern}_${fileId}.${extension}`;
+
+            const response = await fetch(fileUrl);
+
+            if (response.ok) {
+                const blob = await response.blob();
+                const a = document.createElement("a");
+                const downloadUrl = window.URL.createObjectURL(blob);
+                a.href = downloadUrl;
+                a.download = fileName;  // Use the custom filename
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                console.log(`Downloaded ${fileName}`);
+            } else {
+                console.log(`Failed to download ${fileId}: ${response.status}`);
+            }
+        }
+
+        async function downloadFiles(fileIds, url, pattern, extension) {
+            for (const fileId of fileIds) {
+                await downloadFile(fileId, url, pattern, extension);
+            }
+        }
+
+        function startDownload() {
+            // Get input values from the HTML form
+            const url = document.getElementById("url").value.trim();
+            const pattern = document.getElementById("pattern").value.trim();
+            const extension = document.getElementById("extension").value.trim();
+            const fileIdsInput = document.getElementById("fileIds").value.trim();
+            
+            // Convert the file IDs input to an array
+            const fileIds = fileIdsInput.split(",").map(id => id.trim());
+
+            // Validate the inputs
+            if (!url || !pattern || !extension || fileIds.length === 0) {
+                alert("Please fill in all the fields.");
+                return;
+            }
+
+            // Start downloading the files
+            downloadFiles(fileIds, url, pattern, extension);
+        }
+    </script>
+</body>
+</html>
