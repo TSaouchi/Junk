@@ -70,11 +70,11 @@ class OptimizedTreeExtractor:
     def extract_subtree_with_direction(self, root_name, direction="down"):
         """
         Extracts the subtree starting at root_name in the specified direction.
-        
+
         Args:
             root_name (str): The starting node name.
             direction (str): Direction of extraction ('up', 'down', or 'both').
-            
+
         Returns:
             dict: The extracted subtree in the specified direction.
         """
