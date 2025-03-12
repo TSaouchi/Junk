@@ -27,13 +27,12 @@ class OrderedTaskWorker:
     def _worker(self):
         while self.running or not self.task_queue.empty():
             try:
-                task_id, task, args, kwargs = self.task_queue.get(timeout=1)  # Get task in FIFO order
+                task_id, task, args, kwargs, prev_task_map = self.task_queue.get(timeout=1)  # Get task in FIFO order
                 
-                # If task needs a result from a previous task, inject it
-                if 'prev_task_id' in kwargs:
-                    prev_task_id = kwargs.pop('prev_task_id')
+                # Inject previous task results into the specified arguments
+                for prev_task_id, arg_name in (prev_task_map or {}).items():
                     if prev_task_id in self.task_results:
-                        kwargs['prev_result'] = self.task_results.pop(prev_task_id)
+                        kwargs[arg_name] = self.task_results.pop(prev_task_id)
                 
                 # Execute task
                 if asyncio.iscoroutinefunction(task):
@@ -51,11 +50,11 @@ class OrderedTaskWorker:
             except queue.Empty:
                 continue
 
-    def submit_task(self, task, *args, task_id=None, prev_task_id=None, **kwargs):
+    def submit_task(self, task, *args, task_id=None, prev_task_map=None, **kwargs):
         """Submit a sync or async task to be executed in order."""
         if task_id is None:
             task_id = str(uuid.uuid4())  # Generate a unique task ID
-        self.task_queue.put((task_id, task, args, {**kwargs, "prev_task_id": prev_task_id}))
+        self.task_queue.put((task_id, task, args, kwargs, prev_task_map))
         return task_id  # Return the generated task ID for reference
 
     def stop(self):
@@ -75,12 +74,6 @@ def sync_task(name, delay=2):
     result = f"Result from {name}"  # Returning result
     print(f"[{time.strftime('%X')}] Sync Task {name} completed with result: {result}")
     return result  # Store result
-def sync_task2(name, delay=2):
-    print(f"[{time.strftime('%X')}] Sync Task {name} started")
-    time.sleep(delay)
-    result = f"Result from {name}"  # Returning result
-    print(f"[{time.strftime('%X')}] Sync Task {name} completed with result: {result}")
-    return result  # Store result
 
 async def async_task(name, delay=2, prev_result=None):
     print(f"[{time.strftime('%X')}] Async Task {name} started, received: {prev_result}")
@@ -92,14 +85,14 @@ task_worker = OrderedTaskWorker()
 
 # Submitting tasks in order
 task1_id = task_worker.submit_task(sync_task, "Sync1", delay=3)
-task2_id = task_worker.submit_task(async_task, "Async1", delay=2, prev_task_id=task1_id)  # Async1 receives Sync1's result
+task2_id = task_worker.submit_task(async_task, "Async1", delay=2, prev_task_map={task1_id: "prev_result"})  # Async1 receives Sync1's result
 task3_id = task_worker.submit_task(sync_task, "Sync2", delay=1)
-task4_id = task_worker.submit_task(async_task, "Async2", delay=4, prev_task_id=task3_id)
+task4_id = task_worker.submit_task(async_task, "Async2", delay=4, prev_task_map={task3_id: "prev_result"})
 
 print("Microservice is running...")
 start = time.perf_counter()
-for i in range(5):
-    sync_task2(0)
+for i in range(0):
+    print("do this do this do this")
 end = time.perf_counter()
 print(f"Time taken: {end - start:.2f} seconds")
 while True:
