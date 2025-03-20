@@ -3,31 +3,32 @@ import csv
 import configparser
 import yaml
 import os
-import portalocker
+import threading
 from abc import ABC, abstractmethod
-from file_reader import FileExtensions  # Make sure to import FileExtensions
+from file_reader import FileExtensions  # Make sure FileExtensions is imported correctly
 
 class FileWriter(ABC):
     """Abstract base class for file writers."""
     def __init__(self, file_path):
         self.file_path = file_path
+        self.lock = threading.Lock()  # Create a lock for each file writer
     
     @abstractmethod
     def write(self, data):
         pass
 
-    def _lock_and_write(self, file, write_function):
-        # Acquire lock on the file to avoid race conditions
-        with portalocker.Lock(file, 'w', timeout=10):  # Timeout to avoid hanging indefinitely
-            write_function(file)
+    def _lock_and_write(self, write_function):
+        """Acquire lock on the file to avoid race conditions during writing."""
+        with self.lock:  # Acquire the lock before writing
+            with open(self.file_path, 'w', encoding='utf-8') as file:
+                write_function(file)
 
 class TxtFileWriter(FileWriter):
     def write(self, data):
         def write_function(file):
             file.write(data)
         
-        with open(self.file_path, 'w', encoding='utf-8') as file:
-            self._lock_and_write(file, write_function)
+        self._lock_and_write(write_function)
 
 class CsvFileWriter(FileWriter):
     def write(self, data):
@@ -35,16 +36,14 @@ class CsvFileWriter(FileWriter):
             writer = csv.writer(file)
             writer.writerows(data)
         
-        with open(self.file_path, 'w', encoding='utf-8', newline='') as file:
-            self._lock_and_write(file, write_function)
+        self._lock_and_write(write_function)
 
 class JsonFileWriter(FileWriter):
     def write(self, data):
         def write_function(file):
             json.dump(data, file, indent=4)
         
-        with open(self.file_path, 'w', encoding='utf-8') as file:
-            self._lock_and_write(file, write_function)
+        self._lock_and_write(write_function)
 
 class IniFileWriter(FileWriter):
     def write(self, data):
@@ -54,16 +53,14 @@ class IniFileWriter(FileWriter):
                 config[section] = values
             config.write(file)
         
-        with open(self.file_path, 'w', encoding='utf-8') as file:
-            self._lock_and_write(file, write_function)
+        self._lock_and_write(write_function)
 
 class YamlFileWriter(FileWriter):
     def write(self, data):
         def write_function(file):
             yaml.safe_dump(data, file)
         
-        with open(self.file_path, 'w', encoding='utf-8') as file:
-            self._lock_and_write(file, write_function)
+        self._lock_and_write(write_function)
 
 class FileWriterFactory:
     """Factory class to create file writers based on file extension."""
@@ -88,9 +85,8 @@ class FileWriterFactory:
             raise ValueError(f"Unsupported file extension: {extension}")
         return writer_class(file_path)
 
-
 class SimpleFileWriter:
-    """Wrapper class to simplify file writing usage."""
+    """Wrapper class to simplify file writing usage with locking."""
     def __init__(self, file_path):
         # Automatically determine the file extension
         self.file_path = file_path
@@ -101,3 +97,23 @@ class SimpleFileWriter:
         """Write the data to the file using the appropriate writer."""
         self.writer.write(data)
 
+# Example data to write to files
+txt_data = "This is a text file."
+csv_data = [["name", "age"], ["Alice", 30], ["Bob", 25]]
+json_data = {"name": "Alice", "age": 30}
+ini_data = {"section1": {"key1": "value1", "key2": "value2"}}
+yaml_data = {"name": "Alice", "age": 30}
+
+# Example file paths
+txt_file_path = "example.txt"
+csv_file_path = "example.csv"
+json_file_path = "example.json"
+ini_file_path = "example.ini"
+yaml_file_path = "example.yaml"
+
+# Write data to files using SimpleFileWriter
+SimpleFileWriter(txt_file_path).write(txt_data)
+SimpleFileWriter(csv_file_path).write(csv_data)
+SimpleFileWriter(json_file_path).write(json_data)
+SimpleFileWriter(ini_file_path).write(ini_data)
+SimpleFileWriter(yaml_file_path).write(yaml_data)
