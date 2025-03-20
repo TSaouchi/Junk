@@ -3,7 +3,7 @@ import csv
 import os
 import configparser
 import yaml
-import portalocker
+import threading
 from abc import ABC, abstractmethod
 from enum import Enum
 
@@ -19,6 +19,7 @@ class FileReader(ABC):
     """Abstract base class for file readers."""
     def __init__(self, file_path):
         self.file_path = file_path
+        self._lock = threading.Lock()  # Lock object to synchronize file access
     
     @abstractmethod
     def read(self):
@@ -26,7 +27,7 @@ class FileReader(ABC):
 
     def _lock_and_read(self, file, read_function):
         """Acquire lock on the file to avoid race conditions during reading."""
-        with portalocker.Lock(file, 'r', timeout=10):  # Shared lock for reading
+        with self._lock:  # Using the thread lock to avoid race condition
             return read_function(file)
 
 class TxtFileReader(FileReader):
@@ -106,3 +107,17 @@ class SimpleFileReader:
     def read(self):
         """Read the data from the file using the appropriate reader."""
         return self.reader.read()
+
+# Example file paths
+txt_file_path = "example.txt"
+csv_file_path = "example.csv"
+json_file_path = "example.json"
+ini_file_path = "example.ini"
+yaml_file_path = "example.yaml"
+
+# Write data to files using SimpleFileWriter
+print(SimpleFileReader(txt_file_path).read())
+print(SimpleFileReader(csv_file_path).read())
+print(SimpleFileReader(json_file_path).read())
+print(SimpleFileReader(ini_file_path).read())
+print(SimpleFileReader(yaml_file_path).read())
