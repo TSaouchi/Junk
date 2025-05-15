@@ -1,0 +1,18 @@
+#!/bin/sh
+
+# Skip for merge, squash, or rebase commits
+case "$2" in
+  merge|squash|rebase) exit 0 ;;
+esac
+
+# Get current branch name
+BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
+
+# Extract the TOTOPROJECT ticket prefix from branch name
+PREFIX=$(echo "$BRANCH_NAME" | grep -oE 'TOTOPROJECT-[0-9]+')
+
+# Only apply if prefix exists and not already in message
+if [ -n "$PREFIX" ] && ! grep -q "$PREFIX" "$1"; then
+  # Prefix the commit message (GNU sed, compatible with Git Bash)
+  sed -i.bak "1s/^/$PREFIX: /" "$1"
+fi
