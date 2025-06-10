@@ -1,0 +1,18 @@
+{
+  "files.maxMemoryForLargeFilesMB": 4096,
+  "python.languageServer": "Pylance",
+  "python.analysis.memory.keepLibraryAst": false,
+  "python.analysis.indexingExcludedModules": ["tensorflow","torch"],
+  "python.linting.enabled": true,
+  "python.linting.lintOnSave": true,
+  "python.linting.pylintArgs": ["--disable=C0114,C0115,C0116"],
+  "files.watcherExclude": {
+    "**/venv/**": true,
+    "**/__pycache__/**": true,
+    "**/.git/**": true
+  },
+  "search.exclude": {
+    "**/venv/**": true,
+    "**/__pycache__/**": true
+  }
+}
