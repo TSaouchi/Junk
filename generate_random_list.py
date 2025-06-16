@@ -1,22 +1,20 @@
 import random
-from typing import List, Tuple, Iterator
+from typing import Iterator, Tuple, List
 
 class RandomSubsetGenerator:
     def __init__(self, data: Iterator[Tuple], seed: int = None):
-        self.data = list(data)
-        self.total_size = len(self.data)
-        self.random = random.Random(seed)  # Reproducibility
+        self.records = list(data)
+        self.size = len(self.records)
+        self.random = random.Random(seed)
 
     def generate_subsets(self, n: int) -> List[List[Tuple]]:
-        available_indices = list(range(self.total_size))
-        self.random.shuffle(available_indices)
+        subsets = []
 
-        subsets = [[] for _ in range(n)]
-        current = 0
-
-        # Randomly assign each item to one of the n subsets
-        for idx in available_indices:
-            subsets[self.random.randint(0, n - 1)].append(self.data[idx])
+        for _ in range(n):
+            subset_size = self.random.randint(0, self.size)
+            # Sample without replacement inside the same subset
+            subset = self.random.sample(self.records, k=subset_size)
+            subsets.append(subset)
 
         return subsets
 
