@@ -1,3 +1,5 @@
+
+```plaintext
 my-app/
 ├── pom.xml                             # Maven build configuration file (dependencies, plugins, etc.)
 ├── .gitignore                          # Specifies intentionally untracked files to ignore in Git
@@ -9,7 +11,7 @@ my-app/
 │   │   │   └── com/
 │   │   │       └── mycompany/
 │   │   │           └── myapp/
-│   │   │               ├── MyAppApplication.java          # Entry point for the application (Spring Boot `@SpringBootApplication`)
+│   │   │               ├── MyAppApplication.java          # Entry point for the application (Spring Boot @SpringBootApplication)
 │   │   │
 │   │   │               ├── config/                        # Application-level configuration classes
 │   │   │               │   └── WebSecurityConfig.java     # Defines Spring Security rules (authentication, CORS, etc.)
