@@ -67,3 +67,12 @@ my-app/
 │       │                       └── UserControllerTest.java      # Unit/integration test for UserController
 │       └── resources/
 │           └── test-data.sql                              # SQL script to seed data for integration tests
+
+cryptography/
+└── src/
+    └── main/java/com/myorg/crypto/
+        ├── service/             --> Public services (e.g., CryptoService)
+        ├── impl/                --> Implementation details
+        ├── config/              --> Configuration files or beans
+        ├── exceptions/          --> Custom exceptions
+        └── utils/               --> Low-level utilities
