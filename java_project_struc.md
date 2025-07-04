@@ -76,3 +76,18 @@ cryptography/
         ├── config/              --> Configuration files or beans
         ├── exceptions/          --> Custom exceptions
         └── utils/               --> Low-level utilities
+
+src/main/java/your/package/
+├── config/
+│   └── CryptoConfig.java          <-- Loads config values
+├── crypto/
+│   ├── IPasswordCipher.java       <-- Interface
+│   ├── AESCBCPasswordCipher.java  <-- CBC implementation
+│   ├── AESECBPasswordCipher.java  <-- ECB implementation
+│   ├── CipherUtils.java           <-- Shared helpers
+│   └── CipherFactory.java         <-- Chooses CBC or ECB
+├── service/
+│   └── CryptoService.java         <-- Business logic
+└── DemoApplication.java           <-- Main entry point
+└── controller/
+    └── CryptoController.java      <-- REST API
