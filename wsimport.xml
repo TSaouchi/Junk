@@ -1,0 +1,49 @@
+<build>
+    <plugins>
+      <!-- 1. WSImport Plugin to generate Java code from WSDL -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>jaxws-maven-plugin</artifactId>
+        <version>2.6</version>
+        <executions>
+          <execution>
+            <id>wsimport</id>
+            <goals>
+              <goal>wsimport</goal>
+            </goals>
+            <phase>generate-sources</phase>
+            <configuration>
+              <wsdlUrls>
+                <wsdlUrl>http://www.dneonline.com/calculator.asmx?wsdl</wsdlUrl> <!-- Replace with your WSDL -->
+              </wsdlUrls>
+              <packageName>com.example.generated</packageName>
+              <sourceDestDir>${project.build.directory}/generated-sources/wsimport</sourceDestDir>
+              <keep>true</keep>
+              <verbose>true</verbose>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- 2. Include generated source in compilation -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+        <version>3.2.0</version>
+        <executions>
+          <execution>
+            <id>add-source</id>
+            <phase>generate-sources</phase>
+            <goals>
+              <goal>add-source</goal>
+            </goals>
+            <configuration>
+              <sources>
+                <source>${project.build.directory}/generated-sources/wsimport</source>
+              </sources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
