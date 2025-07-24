@@ -12,6 +12,7 @@ import java.util.stream.Collectors;
  */
 public class MapUtils {
 
+    private MapUtils(){}
     /**
      * Rename keys using standard stream operations.
      */
