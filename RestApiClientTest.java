@@ -53,41 +53,43 @@ public class RestApiClientTest {
     }
 
     @Test
-    void testExecuteRestCall() {
-        // Mock WebClient behavior
-        WebClient mockClient = mock(WebClient.class, RETURNS_DEEP_STUBS);
-        Map<String, String> headers = Map.of("Authorization", "Basic XXX");
+    @Test
+void testExecuteRestCall() {
+    WebClient mockClient = mock(WebClient.class);
+    WebClient.RequestBodyUriSpec methodSpec = mock(WebClient.RequestBodyUriSpec.class);
+    WebClient.RequestBodySpec uriSpec = mock(WebClient.RequestBodySpec.class);
+    WebClient.RequestHeadersSpec<?> headersSpec = mock(WebClient.RequestHeadersSpec.class);
+    WebClient.ResponseSpec responseSpec = mock(WebClient.ResponseSpec.class);
 
-        when(webClientCache.getOrCreate(eq(apiConfig), eq(webClientFactory)))
-                .thenReturn(mockClient);
+    Map<String, String> headers = Map.of("Authorization", "Basic XXX");
 
-        when(authHeaderCache.getOrCreate(eq(apiConfig), eq(authHeaderFactory)))
-                .thenReturn(headers);
+    when(webClientCache.getOrCreate(eq(apiConfig), eq(webClientFactory)))
+            .thenReturn(mockClient);
 
-        // Mock call chain
-        WebClient.RequestBodySpec requestBodySpec = mock(WebClient.RequestBodySpec.class);
-        WebClient.RequestHeadersSpec<?> requestHeadersSpec = mock(WebClient.RequestHeadersSpec.class);
-        WebClient.ResponseSpec responseSpec = mock(WebClient.ResponseSpec.class);
+    when(authHeaderCache.getOrCreate(eq(apiConfig), eq(authHeaderFactory)))
+            .thenReturn(headers);
 
-        when(mockClient.method(any())).thenReturn(requestBodySpec);
-        when(requestBodySpec.uri(any())).thenReturn(requestBodySpec);
-        when(requestBodySpec.headers(any())).thenReturn(requestBodySpec);
-        when(requestBodySpec.bodyValue(any())).thenReturn(requestHeadersSpec);
-        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
-        when(responseSpec.toEntity(eq(String.class))).thenReturn(Mono.just(ResponseEntity.ok("OK")));
+    // Mock fluent chain
+    when(mockClient.method(any())).thenReturn(methodSpec);
+    when(methodSpec.uri(any(Function.class))).thenReturn(uriSpec);
+    when(uriSpec.headers(any())).thenReturn(uriSpec);
+    when(uriSpec.bodyValue(any())).thenReturn(headersSpec);
+    when(headersSpec.retrieve()).thenReturn(responseSpec);
+    when(responseSpec.toEntity(eq(String.class))).thenReturn(Mono.just(ResponseEntity.ok("OK")));
 
-        Mono<ResponseEntity<String>> response = restApiClient.execute(
-                apiConfig,
-                HttpMethod.GET,
-                "/test",
-                null,
-                String.class,
-                null,
-                new LinkedMultiValueMap<>()
-        );
+    // Execute
+    Mono<ResponseEntity<String>> response = restApiClient.execute(
+            apiConfig,
+            HttpMethod.GET,
+            "/test",
+            null,
+            String.class,
+            null,
+            new LinkedMultiValueMap<>()
+    );
 
-        assertNotNull(response);
-        ResponseEntity<String> result = response.block();
-        assertNotNull(result);
+    ResponseEntity<String> result = response.block();
+    assertNotNull(result);
+    assertEquals("OK", result.getBody());
     }
 }
