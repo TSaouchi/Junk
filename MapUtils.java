@@ -137,6 +137,23 @@ public final class MapUtils {
         return union(map1, map2, (v1, v2) -> v2); // default behavior: override
     }
 
+    public static <K, V> Map<K, V> union(List<Map<K, V>> maps) {
+        return union(maps, (existing, replacement) -> replacement);
+    }
+
+    public static <K, V> Map<K, V> union(List<Map<K, V>> maps, BinaryOperator<V> mergeFunction) {
+        Map<K, V> result = new LinkedHashMap<>();
+        if (maps == null) return result;
+        for (Map<K, V> map : maps) {
+            if (map != null) {
+                for (Map.Entry<K, V> entry : map.entrySet()) {
+                    result.merge(entry.getKey(), entry.getValue(), mergeFunction);
+                }
+            }
+        }
+        return result;
+    }
+
     @SuppressWarnings("unchecked")
     public static <K, V> Map<K, V> difference(Map<K, V> map1, Map<K, V> map2) {
         Map<K, V> result = new LinkedHashMap<>();
