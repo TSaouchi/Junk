@@ -120,6 +120,36 @@ public final class MapUtils {
         }
     }
 
+    public static Map<String, Object> extractMappedPairs(Map<String, Object> map, String prefix, String key1, String key2) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        extractMappedPairsRecursive(map, prefix, key1, key2, result);
+        return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void extractMappedPairsRecursive(Map<String, Object> map, String prefix, String key1, String key2, Map<String, Object> result) {
+        if (map.containsKey(key1) && map.containsKey(key2)) {
+            Object labelKey = map.get(key1);
+            Object labelValue = map.get(key2);
+            if (labelKey instanceof String) {
+                result.put(prefix + "." + labelKey, labelValue);
+            }
+        }
+
+        for (Map.Entry<String, Object> entry : map.entrySet()) {
+            Object value = entry.getValue();
+            if (value instanceof Map<?, ?> nested && isStringKeyMap(nested)) {
+                extractMappedPairsRecursive((Map<String, Object>) nested, prefix, key1, key2, result);
+            } else if (value instanceof Collection<?> collection) {
+                for (Object item : collection) {
+                    if (item instanceof Map<?, ?> itemMap && isStringKeyMap(itemMap)) {
+                        extractMappedPairsRecursive((Map<String, Object>) itemMap, prefix, key1, key2, result);
+                    }
+                }
+            }
+        }
+    }
+
     public static Map<String, Object> unflatten(Map<String, Object> flatMap) {
         return unflatten(flatMap, ".");
     }
