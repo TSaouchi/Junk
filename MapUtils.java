@@ -1,3 +1,6 @@
+/**
+ * Optimized version of MapUtils with prefix support in flattening.
+ */
 package com.example.maputils;
 
 import java.io.*;
@@ -90,13 +93,17 @@ public final class MapUtils {
     }
 
     public static Map<String, Object> flatten(Map<String, Object> map) {
-        return flatten(map, ".");
+        return flatten(map, ".", "");
     }
 
     public static Map<String, Object> flatten(Map<String, Object> map, String separator) {
+        return flatten(map, separator, "");
+    }
+
+    public static Map<String, Object> flatten(Map<String, Object> map, String separator, String prefix) {
         if (map == null) return null;
         Map<String, Object> result = new LinkedHashMap<>();
-        flattenRecursive(map, "", separator, result);
+        flattenRecursive(map, prefix, separator, result);
         return result;
     }
 
