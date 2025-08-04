@@ -77,19 +77,80 @@ public final class MapUtils {
         return result;
     }
 
-    public static <K, V> Map<K, V> mergeMaps(Map<K, V> map1, Map<K, V> map2, BinaryOperator<V> mergeFunction) {
+    @SuppressWarnings("unchecked")
+    public static <K, V> Map<K, V> union(Map<K, V> map1, Map<K, V> map2, BinaryOperator<V> mergeFunction) {
         if (map1 == null) return map2 == null ? null : new LinkedHashMap<>(map2);
         if (map2 == null) return new LinkedHashMap<>(map1);
-
+    
         Map<K, V> result = new LinkedHashMap<>(map1);
+    
         for (Map.Entry<K, V> entry : map2.entrySet()) {
-            result.merge(entry.getKey(), entry.getValue(), mergeFunction);
+            K key = entry.getKey();
+            V val2 = entry.getValue();
+            V val1 = result.get(key);
+    
+            if (val1 instanceof Map<?, ?> m1 && val2 instanceof Map<?, ?> m2 && isStringKeyMap(m1) && isStringKeyMap(m2)) {
+                V mergedNested = (V) union((Map<String, Object>) m1, (Map<String, Object>) m2, (v1, v2) -> v2);
+                result.put(key, mergedNested);
+            } else {
+                result.merge(key, val2, mergeFunction);
+            }
         }
+    
         return result;
     }
-
-    public static <K, V> Map<K, V> mergeMaps(Map<K, V> map1, Map<K, V> map2) {
-        return mergeMaps(map1, map2, (existing, replacement) -> replacement);
+    
+    public static <K, V> Map<K, V> union(Map<K, V> map1, Map<K, V> map2) {
+        return union(map1, map2, (v1, v2) -> v2); // default behavior: override
+    }
+    
+    @SuppressWarnings("unchecked")
+    public static <K, V> Map<K, V> difference(Map<K, V> map1, Map<K, V> map2) {
+        Map<K, V> result = new LinkedHashMap<>();
+        if (map1 == null) return result;
+        if (map2 == null) return new LinkedHashMap<>(map1);
+    
+        for (Map.Entry<K, V> entry : map1.entrySet()) {
+            K key = entry.getKey();
+            V val1 = entry.getValue();
+            V val2 = map2.get(key);
+    
+            if (!map2.containsKey(key)) {
+                result.put(key, val1);
+            } else if (val1 instanceof Map<?, ?> m1 && val2 instanceof Map<?, ?> m2 && isStringKeyMap(m1) && isStringKeyMap(m2)) {
+                Map<K, V> nestedDiff = difference((Map<K, V>) m1, (Map<K, V>) m2);
+                if (!nestedDiff.isEmpty()) {
+                    result.put(key, (V) nestedDiff);
+                }
+            }
+        }
+    
+        return result;
+    }
+    
+    @SuppressWarnings("unchecked")
+    public static <K, V> Map<K, V> intersect(Map<K, V> map1, Map<K, V> map2) {
+        Map<K, V> result = new LinkedHashMap<>();
+        if (map1 == null || map2 == null) return result;
+    
+        for (Map.Entry<K, V> entry : map1.entrySet()) {
+            K key = entry.getKey();
+            V val1 = entry.getValue();
+            V val2 = map2.get(key);
+    
+            if (map2.containsKey(key)) {
+                if (val1 instanceof Map<?, ?> m1 && val2 instanceof Map<?, ?> m2 && isStringKeyMap(m1) && isStringKeyMap(m2)) {
+                    Map<K, V> nestedIntersect = intersect((Map<K, V>) m1, (Map<K, V>) m2);
+                    if (!nestedIntersect.isEmpty()) {
+                        result.put(key, (V) nestedIntersect);
+                    }
+                } else {
+                    result.put(key, val1); // Keep map1’s value
+                }
+            }
+        }
+    
+        return result;
     }
 
     public static Map<String, Object> flatten(Map<String, Object> map) {
