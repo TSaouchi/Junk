@@ -1,91 +1,95 @@
-<cache-config xmlns="http://xmlns.oracle.com/coherence/coherence-cache-config"
-              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+--------------------------- Server side ----------------------
+<?xml version="1.0" encoding="UTF-8"?>
+<cache-config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xmlns="http://xmlns.oracle.com/coherence/coherence-cache-config"
               xsi:schemaLocation="http://xmlns.oracle.com/coherence/coherence-cache-config coherence-cache-config.xsd">
 
     <caching-scheme-mapping>
         <cache-mapping>
-            <cache-name>*</cache-name> <!-- Match all cache names -->
-            <scheme-name>remote</scheme-name> <!-- Use the remote scheme -->
+            <cache-name>test-cache</cache-name>
+            <scheme-name>extend-scheme</scheme-name>
         </cache-mapping>
     </caching-scheme-mapping>
 
     <caching-schemes>
-        <remote-cache-scheme>
-            <scheme-name>remote</scheme-name>
-            <service-name>RemoteCacheService</service-name> <!-- Must match server-side service -->
+        <extend-binary-scheme>
+            <scheme-name>extend-scheme</scheme-name>
+            <service-name>ExtendTcpCacheService</service-name>
+            <init-params>
+                <param>
+                    <name>port</name>
+                    <value>1408</value>
+                </param>
+            </init-params>
+        </extend-binary-scheme>
+    </caching-schemes>
+
+</cache-config>
+------------------------------------------ client side --------------------------
+  <?xml version="1.0" encoding="UTF-8"?>
+<cache-config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xmlns="http://xmlns.oracle.com/coherence/coherence-cache-config"
+              xsi:schemaLocation="http://xmlns.oracle.com/coherence/coherence-cache-config coherence-cache-config.xsd">
+
+    <caching-scheme-mapping>
+        <cache-mapping>
+            <cache-name>test-cache</cache-name>
+            <scheme-name>extend-scheme</scheme-name>
+        </cache-mapping>
+    </caching-scheme-mapping>
+
+    <caching-schemes>
+        <extend-binary-scheme>
+            <scheme-name>extend-scheme</scheme-name>
+            <service-name>ExtendTcpCacheService</service-name>
             <initiator-config>
                 <tcp-initiator>
                     <remote-addresses>
                         <socket-address>
-                            <address>192.168.1.100</address> <!-- Remote cluster IP -->
-                            <port>7574</port> <!-- Remote cluster port -->
+                            <address>192.168.1.100</address>  <!-- Replace with your cluster's proxy IP -->
+                            <port>1408</port>                 <!-- Port must match server-side -->
                         </socket-address>
                     </remote-addresses>
-                    <connect-timeout>5s</connect-timeout> <!-- Fail fast -->
                 </tcp-initiator>
-                <outgoing-message-handler>
-                    <request-timeout>10s</request-timeout>
-                </outgoing-message-handler>
             </initiator-config>
-        </remote-cache-scheme>
+        </extend-binary-scheme>
     </caching-schemes>
+
 </cache-config>
 
 
-import com.tangosol.net.CacheFactory;
+  import com.tangosol.net.CacheFactory;
 import com.tangosol.net.NamedCache;
 
-public class CoherenceClient {
-
+public class ExtendClient {
     public static void main(String[] args) {
-        // Discovery mode: disable multicast
-        System.setProperty("tangosol.coherence.discovery.mode", "wka");
-
-        // WKA target
-        System.setProperty("tangosol.coherence.wka", "192.168.1.100");
-        System.setProperty("tangosol.coherence.wka.port", "7574");
-
-        // Use custom client-only config
+        // Tell Coherence to use the client-side config with Extend settings
         System.setProperty("tangosol.coherence.cacheconfig", "client-cache-config.xml");
 
         try {
+            // Obtain remote cache reference via Extend
             NamedCache<String, String> cache = CacheFactory.getCache("test-cache");
-            String value = cache.get("hello");
-            System.out.println("Fetched from remote cache: " + value);
-            System.out.println("Remote cache size: " + cache.size());
+
+            // Put data into cache
+            cache.put("hello", "world");
+
+            // Retrieve and print data
+            System.out.println("Cached Value for 'hello': " + cache.get("hello"));
+
+            // Print cache size (remote)
+            System.out.println("Cache size: " + cache.size());
+
+            // Properly release cache resources
+            cache.release();
         } catch (Exception e) {
-            System.err.println("❌ Failed to connect to remote Coherence cluster.");
+            System.err.println("Failed to connect or operate on cache:");
             e.printStackTrace();
-            System.exit(1);
+            System.exit(1); // Crash as you requested if connection fails
+        } finally {
+            // Ensure cache factory is shut down cleanly
+            CacheFactory.shutdown();
         }
     }
 }
 
-import com.tangosol.net.CacheFactory;
-import com.tangosol.net.NamedCache;
-
-public class CoherenceClient {
-
-    public static void main(String[] args) {
-        // Discovery mode: disable multicast
-        System.setProperty("tangosol.coherence.discovery.mode", "wka");
-
-        // WKA target
-        System.setProperty("tangosol.coherence.wka", "192.168.1.100");
-        System.setProperty("tangosol.coherence.wka.port", "7574");
-
-        // Use custom client-only config
-        System.setProperty("tangosol.coherence.cacheconfig", "client-cache-config.xml");
-
-        try {
-            NamedCache<String, String> cache = CacheFactory.getCache("test-cache");
-            String value = cache.get("hello");
-            System.out.println("Fetched from remote cache: " + value);
-            System.out.println("Remote cache size: " + cache.size());
-        } catch (Exception e) {
-            System.err.println("❌ Failed to connect to remote Coherence cluster.");
-            e.printStackTrace();
-            System.exit(1);
-        }
-    }
-}
+  
