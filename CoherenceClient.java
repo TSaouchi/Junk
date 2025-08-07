@@ -66,6 +66,31 @@
   </http-server>
 </management-config>
 
+# Root Logger
+log4j.rootLogger=DEBUG, stdout, R
+
+# Console Appender
+log4j.appender.stdout=org.apache.log4j.ConsoleAppender
+log4j.appender.stdout.layout=org.apache.log4j.PatternLayout
+log4j.appender.stdout.layout.ConversionPattern=%d [user: %x] %-5p (%F:%L) - %m%n
+
+# Rolling File Appender
+log4j.appender.R=org.apache.log4j.RollingFileAppender
+log4j.appender.R.File=/data/primerisk/coherence/logs/COHERENCE_PRIMERISK.log
+log4j.appender.R.MaxFileSize=10MB
+log4j.appender.R.MaxBackupIndex=10
+log4j.appender.R.layout=org.apache.log4j.PatternLayout
+log4j.appender.R.layout.ConversionPattern=%d [user: %x] %-5p (%F:%L) - %m%n
+
+# Reduce noisy logs from these packages
+log4j.category.org=INFO
+log4j.category.net=INFO
+
+# Optional: control coherence logging
+log4j.logger.com.tangosol=DEBUG
+log4j.logger.com.tangosol.coherence.management=DEBUG
+log4j.logger.com.tangosol.coherence.management.server=DEBUG
+
 #!/bin/sh
 
 # ------------------------------------------------------------------------
