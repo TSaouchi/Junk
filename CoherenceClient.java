@@ -1,3 +1,80 @@
+Dependencies for management
+  <project>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.example</groupId>
+  <artifactId>coherence-metrics-support</artifactId>
+  <version>1.0.0</version>
+
+  <dependencies>
+    <!-- Coherence REST/Management -->
+    <dependency>
+      <groupId>com.oracle.coherence</groupId>
+      <artifactId>coherence-management</artifactId>
+      <version>14.1.1-0-0</version>
+    </dependency>
+
+    <!-- JAX-RS API -->
+    <dependency>
+      <groupId>javax.ws.rs</groupId>
+      <artifactId>javax.ws.rs-api</artifactId>
+      <version>2.1</version>
+    </dependency>
+
+    <!-- Jersey (Reference Implementation) -->
+    <dependency>
+      <groupId>org.glassfish.jersey.core</groupId>
+      <artifactId>jersey-server</artifactId>
+      <version>2.35</version>
+    </dependency>
+    <dependency>
+      <groupId>org.glassfish.jersey.core</groupId>
+      <artifactId>jersey-common</artifactId>
+      <version>2.35</version>
+    </dependency>
+    <dependency>
+      <groupId>org.glassfish.jersey.containers</groupId>
+      <artifactId>jersey-container-servlet-core</artifactId>
+      <version>2.35</version>
+    </dependency>
+
+    <!-- HK2 DI (used by Jersey) -->
+    <dependency>
+      <groupId>org.glassfish.hk2</groupId>
+      <artifactId>hk2-locator</artifactId>
+      <version>2.6.1</version>
+    </dependency>
+
+    <!-- Jakarta annotations -->
+    <dependency>
+      <groupId>jakarta.annotation</groupId>
+      <artifactId>jakarta.annotation-api</artifactId>
+      <version>1.3.5</version>
+    </dependency>
+
+    <!-- JAXB (needed for Java 11+) -->
+    <dependency>
+      <groupId>javax.xml.bind</groupId>
+      <artifactId>jaxb-api</artifactId>
+      <version>2.3.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.sun.xml.bind</groupId>
+      <artifactId>jaxb-core</artifactId>
+      <version>2.3.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.sun.xml.bind</groupId>
+      <artifactId>jaxb-impl</artifactId>
+      <version>2.3.0</version>
+    </dependency>
+    <dependency>
+      <groupId>javax.activation</groupId>
+      <artifactId>activation</artifactId>
+      <version>1.1.1</version>
+    </dependency>
+  </dependencies>
+</project>
+
 --------------------------- Server side ----------------------
 <?xml version="1.0" encoding="UTF-8"?>
 <cache-config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
