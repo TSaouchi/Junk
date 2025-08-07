@@ -42,6 +42,30 @@
     </caching-schemes>
 </cache-config>
 
+<?xml version="1.0" encoding="UTF-8"?>
+<management-config
+    xmlns="http://xmlns.oracle.com/coherence/coherence-management-config"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://xmlns.oracle.com/coherence/coherence-management-config coherence-management-config.xsd">
+
+  <!-- 1) Enable HTTP-management on ALL storage nodes -->
+  <http-server>
+    <cluster-config name="${coherence.cluster}">
+      <http-managed-nodes>all</http-managed-nodes>
+    </cluster-config>
+
+    <!-- 2) Bind the REST-API port -->
+    <rest-proxy>
+      <http-server>
+        <local-address>
+          <address>0.0.0.0</address>
+        </local-address>
+        <port>${coherence.rest.port}</port>
+      </http-server>
+    </rest-proxy>
+  </http-server>
+</management-config>
+
 ------------------------------------------ client side --------------------------
 <?xml version="1.0" encoding="UTF-8"?>
 <cache-config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
