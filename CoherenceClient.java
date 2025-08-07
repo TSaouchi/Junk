@@ -82,14 +82,24 @@ log4j.appender.R.MaxBackupIndex=10
 log4j.appender.R.layout=org.apache.log4j.PatternLayout
 log4j.appender.R.layout.ConversionPattern=%d [user: %x] %-5p (%F:%L) - %m%n
 
-# Reduce noisy logs from these packages
+# Reduce noisy logs from common frameworks
 log4j.category.org=INFO
 log4j.category.net=INFO
+log4j.category.com.sun.jersey=INFO
+log4j.category.io.grizzly=INFO
 
-# Optional: control coherence logging
+# Oracle Coherence core logging
 log4j.logger.com.tangosol=DEBUG
+
+# HTTP-REST Management server logging
 log4j.logger.com.tangosol.coherence.management=DEBUG
 log4j.logger.com.tangosol.coherence.management.server=DEBUG
+log4j.logger.com.tangosol.coherence.rest=DEBUG
+log4j.logger.com.tangosol.coherence.rest.server=DEBUG
+
+# Jersey and Grizzly internals (if using these for REST)
+log4j.logger.org.glassfish.jersey=DEBUG
+log4j.logger.org.glassfish.grizzly=DEBUG
 
 #!/bin/sh
 
