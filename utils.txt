@@ -1,1 +1,10 @@
-curl -L -o jmxterm.jar https://repo1.maven.org/maven2/org/cyclopsgroup/jmxterm/1.0.4/jmxterm-1.0.4-uber.jar
+$JAVA_HOME/bin/java \
+  -Dcoherence.edition=EE \
+  -Dcoherence.mode=prod \
+  -Dcoherence.management=all \
+  -Dcoherence.management.remote=true \
+  -Dcoherence.rest.enabled=true \
+  -Dcoherence.rest.port=9006 \
+  -Dcoherence.rest.host=0.0.0.0 \
+  -cp $COHERENCE_HOME/lib/coherence.jar \
+  com.tangosol.net.DefaultCacheServer
