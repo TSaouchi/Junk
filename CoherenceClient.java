@@ -77,31 +77,32 @@ Dependencies for management
 
 --------------------------- Server side ----------------------
 <?xml version="1.0" encoding="UTF-8"?>
+
 <cache-config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
               xmlns="http://xmlns.oracle.com/coherence/coherence-cache-config"
               xsi:schemaLocation="http://xmlns.oracle.com/coherence/coherence-cache-config coherence-cache-config.xsd">
 
-    <!-- Map the cache name to a distributed scheme -->
+    <!-- Cache-to-scheme mapping -->
     <caching-scheme-mapping>
         <cache-mapping>
-            <cache-name>test-cache</cache-name>
+            <cache-name>*</cache-name>
             <scheme-name>distributed-scheme</scheme-name>
         </cache-mapping>
     </caching-scheme-mapping>
 
     <caching-schemes>
 
-        <!-- Distributed caching scheme -->
+        <!-- Distributed cache scheme -->
         <distributed-scheme>
             <scheme-name>distributed-scheme</scheme-name>
             <service-name>DistributedCache</service-name>
             <backing-map-scheme>
-                <local-scheme/>
+                <local-scheme />
             </backing-map-scheme>
             <autostart>true</autostart>
         </distributed-scheme>
 
-        <!-- Extend proxy so clients can connect -->
+        <!-- Extend proxy to allow remote clients to connect -->
         <proxy-scheme>
             <scheme-name>extend-proxy</scheme-name>
             <service-name>ExtendTcpProxyService</service-name>
@@ -109,14 +110,21 @@ Dependencies for management
                 <tcp-acceptor>
                     <local-address>
                         <address>0.0.0.0</address>  <!-- Bind to all interfaces -->
-                        <port>9005</port>           <!-- Client will connect here -->
+                        <port>9010</port>            <!-- Client-side connects to this port -->
                     </local-address>
                 </tcp-acceptor>
+                 <http-acceptor>
+                    <local-address>
+                        <address>0.0.0.0</address> <!-- Bind to all interfaces -->
+                        <port>9006</port>           <!-- REST management port -->
+                    </local-address>
+                </http-acceptor>
             </acceptor-config>
             <autostart>true</autostart>
         </proxy-scheme>
 
     </caching-schemes>
+
 </cache-config>
 
 <?xml version="1.0" encoding="UTF-8"?>
