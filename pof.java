@@ -27,7 +27,7 @@
             <groupId>com.oracle.coherence</groupId>
             <artifactId>coherence</artifactId>
             <version>${coherence.version}</version>
-            <scope>provided</scope>
+            <scope>compile</scope>
         </dependency>
 
         <!-- Lombok -->
@@ -35,7 +35,7 @@
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <version>${lombok.version}</version>
-            <scope>provided</scope>
+            <scope>compile</scope>
         </dependency>
     </dependencies>
 
@@ -58,6 +58,34 @@
                     </annotationProcessorPaths>
                 </configuration>
             </plugin>
+            <plugin>
+             <groupId>org.apache.maven.plugins</groupId>
+             <artifactId>maven-shade-plugin</artifactId>
+             <version>3.5.0</version>
+             <executions>
+                 <execution>
+                     <phase>package</phase>
+                     <goals>
+                         <goal>shade</goal>
+                     </goals>
+                     <configuration>
+                         <createDependencyReducedPom>false</createDependencyReducedPom>
+                         <transformers>
+                             <!-- Merge META-INF/services files, useful if you have SPI -->
+                             <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                             <!-- Merge META-INF/spring.factories if needed -->
+                             <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+                                 <resource>META-INF/spring.factories</resource>
+                             </transformer>
+                             <!-- Merge Manifest if you want to specify Main-Class -->
+                             <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                 <mainClass>com.example.model.MainClassIfAny</mainClass> <!-- optional -->
+                             </transformer>
+                         </transformers>
+                     </configuration>
+                 </execution>
+             </executions>
+         </plugin>
         </plugins>
     </build>
 
