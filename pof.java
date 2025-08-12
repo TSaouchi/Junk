@@ -165,3 +165,26 @@ public class Animal implements PortableObject {
         out.writeInt(1, legs);
     }
 }
+---------------------------
+
+<serialization-config>
+    <!-- Enable POF serialization (requires referencing a POF config on classpath) -->
+    <pof-config-file>pof-config.xml</pof-config-file>
+  </serialization-config>
+
+ -Dcoherence.pof.config=pof-config.xml
+
+<?xml version="1.0"?>
+<pof-config xmlns="http://xmlns.oracle.com/coherence/portable-object-format">
+  <user-type-list>
+    <!-- POF type IDs must match across server and clients -->
+    <user-type>
+      <type-id>1000</type-id>
+      <class-name>com.example.model.Person</class-name>
+    </user-type>
+    <user-type>
+      <type-id>1001</type-id>
+      <class-name>com.example.model.Animal</class-name>
+    </user-type>
+  </user-type-list>
+</pof-config>
