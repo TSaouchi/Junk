@@ -244,3 +244,8 @@ public class CoherenceExtendClient {
         CacheFactory.shutdown();
     }
 }
+SafeConfigurablePofContext
+
+<!-- Allow unknown types -->
+    <allow-interfaces>true</allow-interfaces>
+    <allow-subclasses>true</allow-subclasses>
