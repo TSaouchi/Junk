@@ -458,3 +458,33 @@ public class Animal {
     @Portable(1)
     private int legs;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- Enable POF globally -->
+    <serializer>
+      <instance>
+        <class-name>com.tangosol.io.pof.ConfigurablePofContext</class-name>
+        <init-params>
+          <init-param>
+            <param-type>String</param-type>
+            <param-value>pof-config.xml</param-value> <!-- Path to POF config -->
+          </init-param>
+        </init-params>
+      </instance>
+    </serializer>
+  </caching-schemes>
+</cache-config>
+
+                                                    
