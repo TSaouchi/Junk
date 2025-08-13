@@ -8,3 +8,11 @@ $JAVA_HOME/bin/java \
   -Dcoherence.rest.host=0.0.0.0 \
   -cp $COHERENCE_HOME/lib/coherence.jar \
   com.tangosol.net.DefaultCacheServer
+
+
+
+
+export GRPC_PROPS="-Dcoherence.grpc.enabled=true \
+  -Dcoherence.grpc.port=1408 \
+  -Dcoherence.grpc.address=0.0.0.0 \
+  -Dcoherence.grpc.server.executor.threads=4"
