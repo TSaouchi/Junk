@@ -16,3 +16,45 @@ export GRPC_PROPS="-Dcoherence.grpc.enabled=true \
   -Dcoherence.grpc.port=1408 \
   -Dcoherence.grpc.address=0.0.0.0 \
   -Dcoherence.grpc.server.executor.threads=4"
+
+
+
+<proxy-scheme>
+            <scheme-name>grpc-proxy</scheme-name>
+            <service-name>GrpcProxyService</service-name>
+            <acceptor-config>
+                <grpc-acceptor>
+                    <local-address>
+                        <address>0.0.0.0</address>  <!-- Bind to all interfaces -->
+                        <port>1408</port>           <!-- Standard gRPC port for Coherence -->
+                    </local-address>
+                    
+                    <!-- Optional: Enable TLS/SSL for secure communication -->
+                    <tls>
+                        <enabled>false</enabled>
+                        <!-- If enabling TLS, configure these:
+                        <keystore>
+                            <url>file:///path/to/keystore.jks</url>
+                            <password>keystore-password</password>
+                        </keystore>
+                        <trust-store>
+                            <url>file:///path/to/truststore.jks</url>
+                            <password>truststore-password</password>
+                        </trust-store>
+                        -->
+                    </tls>
+                </grpc-acceptor>
+                
+                <!-- Use JSON serialization for gRPC (default and recommended) -->
+                <serializer>
+                    <instance>
+                        <class-name>com.oracle.coherence.grpc.io.json.JsonSerializer</class-name>
+                    </instance>
+                </serializer>
+                
+                <!-- Optional: Configure thread pool for gRPC requests -->
+                <worker-threads>10</worker-threads>
+                
+            </acceptor-config>
+            <autostart>true</autostart>
+        </proxy-scheme>
