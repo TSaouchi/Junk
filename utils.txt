@@ -58,3 +58,13 @@ export GRPC_PROPS="-Dcoherence.grpc.enabled=true \
             </acceptor-config>
             <autostart>true</autostart>
         </proxy-scheme>
+
+
+$COHERENCE_HOME/lib/coherence-grpc-proxy.jar:\
+$COHERENCE_HOME/lib/coherence-json.jar:\
+$COHERENCE_HOME/lib/grpc-netty-shaded.jar:\
+$COHERENCE_HOME/lib/grpc-protobuf.jar:\
+$COHERENCE_HOME/lib/grpc-stub.jar:\
+$COHERENCE_HOME/lib/grpc-core.jar:\
+$COHERENCE_HOME/lib/protobuf-java.jar:\
+$COHERENCE_HOME/lib/netty-all.jar:\
