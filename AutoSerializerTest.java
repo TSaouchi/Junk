@@ -115,3 +115,51 @@ public class EmployeeSerializerTest {
         assertEquals(original, deserialized);
     }
 }
+
+
+ <dependency>
+        <groupId>org.jeasy</groupId>
+        <artifactId>easy-random-core</artifactId>
+        <version>5.0.0</version>
+        <scope>test</scope>
+    </dependency>
+
+import org.jeasy.random.EasyRandom;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import java.lang.reflect.Field;
+
+@Test
+void testRoundTripSerialization() throws IOException, IllegalAccessException {
+    SimplePofContext context = new SimplePofContext();
+    context.registerUserType(1000, Employee.class, new EmployeeSerializer());
+
+    // Automatically populate all fields of Employee
+    EasyRandom easyRandom = new EasyRandom();
+    Employee original = easyRandom.nextObject(Employee.class);
+
+    // Serialize
+    WriteBuffer writeBuffer = new ByteArrayWriteBuffer();
+    WriteBuffer.BufferOutput out = writeBuffer.getBufferOutput();
+    PofBufferWriter writer = new PofBufferWriter(out, context);
+    writer.writeObject(0, original);
+
+    // Deserialize
+    ReadBuffer readBuffer = writeBuffer.getReadBuffer();
+    ReadBuffer.BufferInput in = readBuffer.getBufferInput();
+    PofBufferReader reader = new PofBufferReader(in, context);
+    Employee deserialized = (Employee) reader.readObject(0);
+
+    // Automatically assert all fields
+    Field[] fields = Employee.class.getDeclaredFields();
+    for (Field field : fields) {
+        field.setAccessible(true);
+        Object originalValue = field.get(original);
+        Object deserializedValue = field.get(deserialized);
+        assertEquals(originalValue, deserializedValue,
+            "Field '" + field.getName() + "' mismatch");
+    }
+
+    // Optional full object equality
+    assertEquals(original, deserialized, "Round-trip serialization failed");
+}
