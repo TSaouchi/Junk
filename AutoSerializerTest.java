@@ -1,4 +1,42 @@
-// src/test/java/com/toto/myproject/AutoSerializerTest.java
+src/main/java/com/toto/myproject/model/Employee.java
+src/main/java/com/toto/myproject/serializer/EmployeeSerializer.java
+src/main/resources/pof-config.xml
+src/test/java/com/toto/myproject/util/SerializerTestUtil.java
+src/test/java/com/toto/myproject/AutoSerializerTest.java
+src/test/java/com/toto/myproject/PofConfigValidationTest.java
+
+package com.toto.myproject.util;
+
+import com.tangosol.io.pof.PofSerializer;
+import com.tangosol.io.pof.ConfigurablePofContext;
+import com.tangosol.io.pof.PofBufferReader;
+import com.tangosol.io.pof.PofBufferWriter;
+
+import java.io.*;
+
+public class SerializerTestUtil {
+
+    private static final ConfigurablePofContext context =
+            new ConfigurablePofContext("pof-config.xml"); // must exist in src/main/resources
+
+    @SuppressWarnings("unchecked")
+    public static <T> T serializeAndDeserialize(T obj, PofSerializer<T> serializer) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        DataOutputStream dos = new DataOutputStream(baos);
+
+        PofBufferWriter writer = new PofBufferWriter(context, dos);
+        serializer.serialize(writer, obj);
+        writer.flush();
+
+        ByteArrayInputStream bais = new ByteArrayInputStream(baos.toByteArray());
+        DataInputStream dis = new DataInputStream(bais);
+        PofBufferReader reader = new PofBufferReader(context, dis);
+
+        return serializer.deserialize(reader);
+    }
+}
+
+
 package com.toto.myproject;
 
 import com.tangosol.io.pof.PofSerializer;
@@ -14,14 +52,9 @@ import static org.junit.jupiter.api.Assertions.*;
 public class AutoSerializerTest {
 
     @Test
-    void testAllModelsHaveMatchingSerializers() throws Exception {
+    void testRoundTripSerializationForAllModels() throws Exception {
         Reflections modelReflections = new Reflections("com.toto.myproject.model");
-        Reflections serializerReflections = new Reflections("com.toto.myproject.serializer");
-
-        Set<Class<?>> modelClasses = modelReflections.getTypesAnnotatedWith(lombok.Data.class, true);
-        if (modelClasses.isEmpty()) {
-            modelClasses = modelReflections.getSubTypesOf(Object.class); // fallback
-        }
+        Set<Class<?>> modelClasses = modelReflections.getSubTypesOf(Object.class);
 
         for (Class<?> modelClass : modelClasses) {
             String serializerName = "com.toto.myproject.serializer." + modelClass.getSimpleName() + "Serializer";
@@ -37,15 +70,12 @@ public class AutoSerializerTest {
             assertTrue(PofSerializer.class.isAssignableFrom(serializerClass),
                     serializerName + " must implement PofSerializer");
 
-            // Instantiate model
             Object modelInstance = createInstance(modelClass);
 
-            // Instantiate serializer
             @SuppressWarnings("unchecked")
             PofSerializer<Object> serializer =
                     (PofSerializer<Object>) serializerClass.getDeclaredConstructor().newInstance();
 
-            // Test round-trip
             Object deserialized = SerializerTestUtil.serializeAndDeserialize(modelInstance, serializer);
 
             assertNotNull(deserialized, "Deserialized object should not be null for " + modelClass.getName());
@@ -60,13 +90,11 @@ public class AutoSerializerTest {
             ctor.setAccessible(true);
             return ctor.newInstance();
         } catch (NoSuchMethodException e) {
-            // Try to find an all-args constructor and fill with dummy values
             for (Constructor<?> ctor : modelClass.getDeclaredConstructors()) {
                 if (ctor.getParameterCount() > 0) {
                     Object[] args = new Object[ctor.getParameterCount()];
                     for (int i = 0; i < args.length; i++) {
-                        Class<?> type = ctor.getParameterTypes()[i];
-                        args[i] = dummyValue(type);
+                        args[i] = dummyValue(ctor.getParameterTypes()[i]);
                     }
                     ctor.setAccessible(true);
                     return ctor.newInstance(args);
@@ -86,45 +114,53 @@ public class AutoSerializerTest {
     }
 }
 
-<!-- JUnit 5 -->
-  <dependency>
-    <groupId>org.junit.jupiter</groupId>
-    <artifactId>junit-jupiter</artifactId>
-    <version>5.10.2</version>
-    <scope>test</scope>
-  </dependency>
 
-  <!-- Reflections for classpath scanning -->
-  <dependency>
-    <groupId>org.reflections</groupId>
-    <artifactId>reflections</artifactId>
-    <version>0.10.2</version>
-    <scope>test</scope>
-  </dependency>
+package com.toto.myproject;
 
-// src/test/java/com/toto/myproject/util/SerializerTestUtil.java
-package com.toto.myproject.util;
+import com.tangosol.io.pof.ConfigurablePofContext;
+import com.tangosol.io.pof.PofSerializer;
+import org.junit.jupiter.api.Test;
+import org.reflections.Reflections;
 
-import com.tangosol.io.pof.*;
-import com.tangosol.io.pof.reflect.SimplePofContext;
+import java.util.*;
 
-import java.io.*;
+import static org.junit.jupiter.api.Assertions.*;
 
-public class SerializerTestUtil {
-    @SuppressWarnings("unchecked")
-    public static <T> T serializeAndDeserialize(T obj, PofSerializer<T> serializer) throws IOException {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        DataOutputStream dos = new DataOutputStream(baos);
+public class PofConfigValidationTest {
 
-        PofContext context = new SimplePofContext();
-        PofBufferWriter writer = new PofBufferWriter(context, dos);
-        serializer.serialize(writer, obj);
-        writer.flush();
+    private final ConfigurablePofContext context =
+            new ConfigurablePofContext("pof-config.xml"); // must be in src/main/resources
 
-        ByteArrayInputStream bais = new ByteArrayInputStream(baos.toByteArray());
-        DataInputStream dis = new DataInputStream(bais);
-        PofBufferReader reader = new PofBufferReader(context, dis);
+    @Test
+    void testAllModelsAreInPofConfig() {
+        Reflections modelReflections = new Reflections("com.toto.myproject.model");
+        Set<Class<?>> modelClasses = modelReflections.getSubTypesOf(Object.class);
 
-        return serializer.deserialize(reader);
+        Set<Integer> seenTypeIds = new HashSet<>();
+
+        for (Class<?> modelClass : modelClasses) {
+            int typeId = context.getUserTypeIdentifier(modelClass);
+
+            assertTrue(typeId >= 0,
+                    "Model " + modelClass.getName() + " is missing from pof-config.xml");
+
+            // Ensure uniqueness
+            assertTrue(seenTypeIds.add(typeId),
+                    "Duplicate type-id " + typeId + " found in pof-config.xml");
+        }
+    }
+
+    @Test
+    void testAllSerializersImplementPofSerializer() {
+        Reflections serializerReflections = new Reflections("com.toto.myproject.serializer");
+        Set<Class<? extends PofSerializer>> serializerClasses =
+                serializerReflections.getSubTypesOf(PofSerializer.class);
+
+        assertFalse(serializerClasses.isEmpty(), "No serializers found in package");
+
+        for (Class<? extends PofSerializer> serializerClass : serializerClasses) {
+            assertTrue(PofSerializer.class.isAssignableFrom(serializerClass),
+                    serializerClass.getName() + " must implement PofSerializer");
+        }
     }
 }
