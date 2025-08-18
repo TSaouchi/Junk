@@ -86,12 +86,21 @@ public class AutoSerializerTest {
     }
 }
 
-<dependency>
-  <groupId>org.reflections</groupId>
-  <artifactId>reflections</artifactId>
-  <version>0.10.2</version>
-  <scope>test</scope>
-</dependency>
+<!-- JUnit 5 -->
+  <dependency>
+    <groupId>org.junit.jupiter</groupId>
+    <artifactId>junit-jupiter</artifactId>
+    <version>5.10.2</version>
+    <scope>test</scope>
+  </dependency>
+
+  <!-- Reflections for classpath scanning -->
+  <dependency>
+    <groupId>org.reflections</groupId>
+    <artifactId>reflections</artifactId>
+    <version>0.10.2</version>
+    <scope>test</scope>
+  </dependency>
 
 // src/test/java/com/toto/myproject/util/SerializerTestUtil.java
 package com.toto.myproject.util;
