@@ -1,0 +1,58 @@
+{
+  "configuration": {
+    "status": "WARN",
+    "appenders": {
+      "stdout": {
+        "type": "Console",
+        "name": "stdout",
+        "target": "SYSTEM_OUT",
+        "layout": {
+          "type": "PatternLayout",
+          "pattern": "%d [user: %x] %-5p (%F:%L) - %m%n"
+        }
+      },
+      "R": {
+        "type": "RollingFile",
+        "name": "R",
+        "fileName": "/data/primerisk/coherence/logs/COHERENCE_PRIMERISK.log",
+        "filePattern": "/data/primerisk/coherence/logs/COHERENCE_PRIMERISK-%i.log",
+        "layout": {
+          "type": "PatternLayout",
+          "pattern": "%d [user: %x] %-5p (%F:%L) - %m%n"
+        },
+        "policies": {
+          "size": {
+            "type": "SizeBasedTriggeringPolicy",
+            "size": "10MB"
+          }
+        },
+        "strategy": {
+          "type": "DefaultRolloverStrategy",
+          "max": 10
+        }
+      }
+    },
+    "loggers": {
+      "root": {
+        "level": "DEBUG",
+        "appenderRefs": [
+          { "ref": "stdout" },
+          { "ref": "R" }
+        ]
+      },
+      "logger": [
+        { "name": "org", "level": "INFO" },
+        { "name": "net", "level": "INFO" },
+        { "name": "com.sun.jersey", "level": "INFO" },
+        { "name": "io.grizzly", "level": "INFO" },
+        { "name": "com.tangosol", "level": "DEBUG" },
+        { "name": "com.tangosol.coherence.management", "level": "DEBUG" },
+        { "name": "com.tangosol.coherence.management.server", "level": "DEBUG" },
+        { "name": "com.tangosol.coherence.rest", "level": "DEBUG" },
+        { "name": "com.tangosol.coherence.rest.server", "level": "DEBUG" },
+        { "name": "org.glassfish.jersey", "level": "DEBUG" },
+        { "name": "org.glassfish.grizzly", "level": "DEBUG" }
+      ]
+    }
+  }
+}
