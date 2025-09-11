@@ -3,42 +3,50 @@ package junk;
 import com.tangosol.net.CacheFactory;
 import com.tangosol.net.ConfigurableCacheFactory;
 import com.tangosol.net.NamedCache;
-import com.tangosol.net.Service;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class CoherenceClient {
+
+    private static final ConfigurableCacheFactory usFactory;
+    private static final ConfigurableCacheFactory euFactory;
 
     static {
         System.setProperty("tangosol.pof.enabled", "true");
-        System.setProperty("tangosol.coherence.cacheconfig", "cache-config.xml");
 
-        // Shutdown hook with SLF4J logging
+        // Create separate factories for US and EU
+        usFactory = CacheFactory.getCacheFactoryBuilder()
+                .getConfigurableCacheFactory("cache-config-us.xml", null);
+
+        euFactory = CacheFactory.getCacheFactoryBuilder()
+                .getConfigurableCacheFactory("cache-config-eu.xml", null);
+
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            System.out.println("Shutting down Coherence...");
-            CacheFactory.shutdown();
-            System.out.println("Coherence shutdown complete.");
+            log.info("Shutting down Coherence factories...");
+            try {
+                if (usFactory != null) usFactory.shutdown();
+                if (euFactory != null) euFactory.shutdown();
+            } catch (Exception e) {
+                log.error("Error during shutdown", e);
+            }
+            log.info("Coherence shutdown complete.");
         }));
     }
 
     public enum ClusterTarget {
-        US("RemoteCacheUS"),
-        EU("RemoteCacheEU");
-
-        private final String serviceName;
-
-        ClusterTarget(String serviceName) {
-            this.serviceName = serviceName;
-        }
-
-        public String getServiceName() {
-            return serviceName;
-        }
+        US, EU
     }
 
+    @SuppressWarnings("unchecked")
     public static <K, V> NamedCache<K, V> getCache(ClusterTarget target, String cacheName) {
-        ConfigurableCacheFactory ccf = CacheFactory.getConfigurableCacheFactory();
-        Service service = ccf.ensureService(target.getServiceName());
-        ClassLoader loader = Thread.currentThread().getContextClassLoader();
-        return ccf.ensureCache(cacheName, loader, service);
+        ConfigurableCacheFactory ccf = (target == ClusterTarget.US) ? usFactory : euFactory;
+        ClassLoader loader;
+        try {
+            loader = Thread.currentThread().getContextClassLoader();
+        } catch (SecurityException e) {
+            loader = null;
+        }
+        return ccf.ensureCache(cacheName, loader);
     }
 
     public static void main(String[] args) {
@@ -48,9 +56,10 @@ public class CoherenceClient {
         NamedCache<String, String> euOrders = getCache(ClusterTarget.EU, "orders");
         euOrders.put("id-1", "EU order");
 
-        log.info("Inserted 'orders' cache in both clusters.");
+        log.info("Inserted 'orders' cache in both clusters using the same cache name.");
     }
 }
+
 
 
 <caching-scheme-mapping>
