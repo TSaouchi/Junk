@@ -1,109 +1,51 @@
 package junk;
 
+import com.tangosol.net.NamedCache;
 import com.tangosol.net.CacheFactory;
 import com.tangosol.net.ConfigurableCacheFactory;
-import com.tangosol.net.NamedCache;
-import lombok.extern.slf4j.Slf4j;
+import com.tangosol.net.ExtensibleConfigurableCacheFactory;
 
-@Slf4j
-public class CoherenceClient {
+public class MultiClusterCacheManager {
 
-    private static final ConfigurableCacheFactory usFactory;
-    private static final ConfigurableCacheFactory euFactory;
+    private final ConfigurableCacheFactory europeFactory;
+    private final ConfigurableCacheFactory usFactory;
 
-    static {
-        System.setProperty("tangosol.pof.enabled", "true");
+    public MultiClusterCacheManager() {
+        // Load XML configs into ECCF factories
+        ExtensibleConfigurableCacheFactory.Dependencies europeDeps =
+            ExtensibleConfigurableCacheFactory.DependenciesHelper.newInstance("cache-config-europe.xml");
+        europeFactory = new ExtensibleConfigurableCacheFactory(europeDeps);
 
-        // Create separate factories for US and EU
-        usFactory = CacheFactory.getCacheFactoryBuilder()
-                .getConfigurableCacheFactory("cache-config-us.xml", null);
-
-        euFactory = CacheFactory.getCacheFactoryBuilder()
-                .getConfigurableCacheFactory("cache-config-eu.xml", null);
-
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            log.info("Shutting down Coherence factories...");
-            try {
-                if (usFactory != null) usFactory.shutdown();
-                if (euFactory != null) euFactory.shutdown();
-            } catch (Exception e) {
-                log.error("Error during shutdown", e);
-            }
-            log.info("Coherence shutdown complete.");
-        }));
+        ExtensibleConfigurableCacheFactory.Dependencies usDeps =
+            ExtensibleConfigurableCacheFactory.DependenciesHelper.newInstance("cache-config-us.xml");
+        usFactory = new ExtensibleConfigurableCacheFactory(usDeps);
     }
 
-    public enum ClusterTarget {
-        US, EU
+    public NamedCache<String, String> getEuropeCache(String cacheName) {
+        return europeFactory.ensureCache(cacheName, getClass().getClassLoader());
     }
 
-    @SuppressWarnings("unchecked")
-    public static <K, V> NamedCache<K, V> getCache(ClusterTarget target, String cacheName) {
-        ConfigurableCacheFactory ccf = (target == ClusterTarget.US) ? usFactory : euFactory;
-        ClassLoader loader;
-        try {
-            loader = Thread.currentThread().getContextClassLoader();
-        } catch (SecurityException e) {
-            loader = null;
-        }
-        return ccf.ensureCache(cacheName, loader);
+    public NamedCache<String, String> getUSCache(String cacheName) {
+        return usFactory.ensureCache(cacheName, getClass().getClassLoader());
+    }
+
+    public void shutdown() {
+        europeFactory.dispose();
+        usFactory.dispose();
+        CacheFactory.shutdown(); // shutdown global Coherence services
     }
 
     public static void main(String[] args) {
-        NamedCache<String, String> usOrders = getCache(ClusterTarget.US, "orders");
-        usOrders.put("id-1", "US order");
+        MultiClusterCacheManager manager = new MultiClusterCacheManager();
 
-        NamedCache<String, String> euOrders = getCache(ClusterTarget.EU, "orders");
-        euOrders.put("id-1", "EU order");
+        NamedCache<String, String> europeCache = manager.getEuropeCache("toto");
+        europeCache.put("euKey", "Hello Europe!");
+        System.out.println("Europe: " + europeCache.get("euKey"));
 
-        log.info("Inserted 'orders' cache in both clusters using the same cache name.");
+        NamedCache<String, String> usCache = manager.getUSCache("toto");
+        usCache.put("usKey", "Hello USA!");
+        System.out.println("US: " + usCache.get("usKey"));
+
+        manager.shutdown();
     }
 }
-
-
-
-<caching-scheme-mapping>
-    <!-- All caches can be mapped to US -->
-    <cache-mapping>
-        <cache-name>*</cache-name>
-        <scheme-name>us-remote</scheme-name>
-    </cache-mapping>
-
-    <!-- All caches can be mapped to EU -->
-    <cache-mapping>
-        <cache-name>*</cache-name>
-        <scheme-name>eu-remote</scheme-name>
-    </cache-mapping>
-</caching-scheme-mapping>
-
-<caching-schemes>
-    <remote-cache-scheme>
-        <scheme-name>us-remote</scheme-name>
-        <service-name>RemoteCacheUS</service-name>
-        <initiator-config>
-            <tcp-initiator>
-                <remote-addresses>
-                    <socket-address>
-                        <address>us-server-host</address>
-                        <port>9090</port>
-                    </socket-address>
-                </remote-addresses>
-            </tcp-initiator>
-        </initiator-config>
-    </remote-cache-scheme>
-
-    <remote-cache-scheme>
-        <scheme-name>eu-remote</scheme-name>
-        <service-name>RemoteCacheEU</service-name>
-        <initiator-config>
-            <tcp-initiator>
-                <remote-addresses>
-                    <socket-address>
-                        <address>eu-server-host</address>
-                        <port>9090</port>
-                    </socket-address>
-                </remote-addresses>
-            </tcp-initiator>
-        </initiator-config>
-    </remote-cache-scheme>
-</caching-schemes>
