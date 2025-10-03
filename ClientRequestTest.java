@@ -28,7 +28,7 @@ class ClientRequestTest {
             resultName.add("R" + i);
         }
 
-        ClientRequest request = new ClientRequest(codeType, codeValue, resultName, Status.NOTFOUND);
+        ClientRequest request = new ClientRequest(codeType, codeValue, resultName, Status.API_MISS);
 
         ExecutorService executor = Executors.newFixedThreadPool(THREADS);
         List<Callable<Void>> tasks = new ArrayList<>();
@@ -54,9 +54,10 @@ class ClientRequestTest {
         executor.awaitTermination(1, TimeUnit.MINUTES);
 
         // Verify all statuses are valid (should be one of the enum values)
-        for (Status s : request.getStatusSnapshot()) {
+        for (Status s : request.getStatusSnapshot(null)) {
             assertNotNull(s);
-            assertTrue(s == Status.NOTFOUND || s == Status.OK || s == Status.FAILED);
+            assertTrue(s == Status.API_HIT || s == Status.CACHE_HIT || s == Status.UNKNOWN ||
+                       s == Status.API_MISS || s == Status.CACHE_MISS);
         }
     }
 
@@ -67,21 +68,21 @@ class ClientRequestTest {
         List<String> codeValue = List.of("V1","V2","V3","V4","V5","V6");
         List<String> resultName = List.of("R1","R2","R3","R4","R5","R6");
 
-        ClientRequest parent = new ClientRequest(codeType, codeValue, resultName, Status.NOTFOUND);
+        ClientRequest parent = new ClientRequest(codeType, codeValue, resultName, Status.API_MISS);
 
-        List<ClientRequest> slices = parent.slice(2);
+        List<ClientRequest> slices = parent.slice(2, null);
 
         ExecutorService executor = Executors.newFixedThreadPool(3);
-        executor.submit(() -> slices.get(0).updateStatusByCodeValue("V1", Status.OK));
-        executor.submit(() -> slices.get(1).updateStatusByResultName("R4", Status.FAILED));
-        executor.submit(() -> slices.get(2).updateStatusByCodeValue("V6", Status.OK));
+        executor.submit(() -> slices.get(0).updateStatusByCodeValue("V1", Status.CACHE_MISS));
+        executor.submit(() -> slices.get(1).updateStatusByResultName("R4", Status.UNKNOWN));
+        executor.submit(() -> slices.get(2).updateStatusByCodeValue("V6", Status.CACHE_MISS));
 
         executor.shutdown();
         executor.awaitTermination(30, TimeUnit.SECONDS);
 
         // Ensure parent reflects updates from slices
-        List<Status> expected = List.of(Status.OK, Status.NOTFOUND, Status.NOTFOUND, Status.FAILED, Status.NOTFOUND, Status.OK);
-        assertEquals(expected, parent.getStatusSnapshot());
+        List<Status> expected = List.of(Status.CACHE_MISS, Status.API_MISS, Status.API_MISS, Status.UNKNOWN, Status.API_MISS, Status.CACHE_MISS);
+        assertEquals(expected, parent.getStatusSnapshot(null));
     }
 
     @Test
@@ -96,19 +97,19 @@ class ClientRequestTest {
             resultName.add("R" + i);
         }
 
-        ClientRequest request = new ClientRequest(codeType, codeValue, resultName, Status.NOTFOUND);
+        ClientRequest request = new ClientRequest(codeType, codeValue, resultName, Status.API_MISS);
 
         ExecutorService executor = Executors.newFixedThreadPool(10);
         List<Runnable> tasks = new ArrayList<>();
         Random random = new Random();
 
         // Randomly update statuses in streamed slices
-        request.streamSlices(20).forEach(slice -> {
+        request.streamSlices(20, null).forEach(slice -> {
             for (int i = 0; i < 20; i++) {
                 tasks.add(() -> {
-                    int idx = random.nextInt(slice.getCodeValues().size());
+                    int idx = random.nextInt(slice.getCodeValues(null).size());
                     Status newStatus = Status.values()[random.nextInt(Status.values().length)];
-                    slice.updateStatusByCodeValue(slice.getCodeValues().get(idx), newStatus);
+                    slice.updateStatusByCodeValue(slice.getCodeValues(null).get(idx), newStatus);
                 });
             }
         });
@@ -118,9 +119,10 @@ class ClientRequestTest {
         executor.awaitTermination(1, TimeUnit.MINUTES);
 
         // All statuses should still be valid enum values
-        for (Status s : request.getStatusSnapshot()) {
+        for (Status s : request.getStatusSnapshot(null)) {
             assertNotNull(s);
-            assertTrue(s == Status.NOTFOUND || s == Status.OK || s == Status.FAILED);
+            assertTrue(s == Status.API_HIT || s == Status.CACHE_HIT || s == Status.UNKNOWN ||
+                       s == Status.API_MISS || s == Status.CACHE_MISS);
         }
     }
 }
