@@ -8,7 +8,13 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-enum Status { NOTFOUND, OK, FAILED }
+enum Status {
+    CACHE_HIT,
+    CACHE_MISS,
+    API_HIT,
+    API_MISS,
+    UNKNOWN // default
+}
 
 @Data
 public class ClientRequest {
@@ -72,13 +78,31 @@ public class ClientRequest {
         this.rowsByResultName = resultNameMap;
     }
 
-    /** Slice rows into chunks by index */
-    public List<ClientRequest> slice(int chunkSize) {
+    /** Slice rows into chunks by index, optionally filtering by status */
+    public List<ClientRequest> slice(Status filter) {
+        return slice(rows.size(), filter);
+    }
+    public List<ClientRequest> slice(int chunkSize, Status filter) {
+        if (chunkSize == 0) return List.of();
+        // Apply filter if provided
+        List<Row> filteredRows;
+        if (filter != null) {
+            filteredRows = new ArrayList<>();
+            for (Row row : rows) {
+                if (row.getStatus() == filter) {
+                    filteredRows.add(row);
+                }
+            }
+        } else {
+            filteredRows = rows; // use all rows
+        }
+
+        // Slice the filtered rows
         List<ClientRequest> slices = new ArrayList<>();
-        int total = rows.size();
+        int total = filteredRows.size();
         for (int i = 0; i < total; i += chunkSize) {
             int end = Math.min(i + chunkSize, total);
-            List<Row> subRows = rows.subList(i, end);
+            List<Row> subRows = filteredRows.subList(i, end);
             slices.add(new ClientRequest(subRows));
         }
         return slices;
@@ -98,15 +122,30 @@ public class ClientRequest {
     }
 
     /** Stream slices by chunk size */
-    public Stream<ClientRequest> streamSlices(int chunkSize) {
-        int total = rows.size();
+    public Stream<ClientRequest> streamSlices(int chunkSize, Status filter) {
+        if (chunkSize == 0) return Stream.empty();
+        // Apply filter if provided
+        List<Row> filteredRows;
+        if (filter != null) {
+            filteredRows = new ArrayList<>();
+            for (Row row : rows) {
+                if (row.getStatus() == filter) {
+                    filteredRows.add(row);
+                }
+            }
+        } else {
+            filteredRows = rows; // use all rows
+        }
+
+        int total = filteredRows.size();
         return IntStream.range(0, (int) Math.ceil((double) total / chunkSize))
                 .mapToObj(i -> {
                     int start = i * chunkSize;
                     int end = Math.min(start + chunkSize, total);
-                    return new ClientRequest(rows.subList(start, end));
+                    return new ClientRequest(filteredRows.subList(start, end));
                 });
     }
+
 
     /** Update status by codeValue key */
     public void updateStatusByCodeValue(String codeValueKey, Status newStatus) {
@@ -120,29 +159,46 @@ public class ClientRequest {
         if (row != null) row.updateStatus(newStatus);
     }
 
-    /** Return a snapshot of all statuses */
-    public List<Status> getStatusSnapshot() {
+    /** Return a snapshot of all statuses, filtered by optional status */
+    public List<Status> getStatusSnapshot(Status filter) {
         List<Status> snapshot = new ArrayList<>();
-        for (Row row : rows) snapshot.add(row.getStatus());
+        for (Row row : rows) {
+            Status s = row.getStatus();
+            if (filter == null || s == filter) {
+                snapshot.add(s);
+            }
+        }
         return Collections.unmodifiableList(snapshot);
     }
 
     /** Convenience: Return lists of codeType, codeValue, resultName for serialization */
-    public List<String> getCodeTypes() {
+    public List<String> getCodeTypes(Status filter) {
         List<String> list = new ArrayList<>();
-        for (Row row : rows) list.add(row.getCodeType());
+        for (Row row : rows) {
+            if (filter == null || row.getStatus() == filter) {
+                list.add(row.getCodeType());
+            }
+        }
         return Collections.unmodifiableList(list);
     }
 
-    public List<String> getCodeValues() {
+    public List<String> getCodeValues(Status filter) {
         List<String> list = new ArrayList<>();
-        for (Row row : rows) list.add(row.getCodeValue());
+        for (Row row : rows) {
+            if (filter == null || row.getStatus() == filter) {
+                list.add(row.getCodeValue());
+            }
+        }
         return Collections.unmodifiableList(list);
     }
 
-    public List<String> getResultNames() {
+    public List<String> getResultNames(Status filter) {
         List<String> list = new ArrayList<>();
-        for (Row row : rows) list.add(row.getResultName());
+        for (Row row : rows) {
+            if (filter == null || row.getStatus() == filter) {
+                list.add(row.getResultName());
+            }
+        }
         return Collections.unmodifiableList(list);
     }
 }
