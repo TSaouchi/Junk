@@ -1,4 +1,12 @@
-ublic class GenericValueExtractor<T> implements ValueExtractor<T, Object>, Serializable {
+public class CoherenceFilters {
+
+    /** Equal filter for nested fields */
+    public static <T> Filter<T> eq(String fieldPath, Object value) {
+        return Filters.equal(new GenericValueExtractor<>(fieldPath), value);
+    }
+}
+
+public class GenericValueExtractor<T> implements ValueExtractor<T, Object>, Serializable {
 
     private static final long serialVersionUID = 1L;
 
