@@ -56,3 +56,32 @@ public class ApiConfig {
     // Optional per-API read/write timeouts (null = disabled)
     private Integer readTimeoutSec;           // e.g., 15, 120 for long-running APIs
     private Integer writeTimeoutSec;          // e.g., 15
+
+apis:
+  toto:
+    name: "ApiToto"
+    baseUrl: "https://toto.example.com"
+    type: "REST"
+    maxConnections: 100
+    pendingAcquireTimeoutSec: 10
+    connectTimeoutMillis: 8000
+    readTimeoutSec: 30
+    writeTimeoutSec: 15
+    certificate:
+      crt: "classpath:certs/toto.crt"
+      key: "classpath:certs/toto.key"
+      pem: "classpath:certs/toto.pem"
+
+  lala:
+    name: "ApiLala"
+    baseUrl: "https://lala.example.com"
+    type: "REST"
+    maxConnections: 50
+    pendingAcquireTimeoutSec: 15
+    connectTimeoutMillis: 10000
+    readTimeoutSec: 120
+    writeTimeoutSec: 30
+    certificate:
+      crt: "classpath:certs/lala.crt"
+      key: "classpath:certs/lala.key"
+      pem: "classpath:certs/lala.pem"
