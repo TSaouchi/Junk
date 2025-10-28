@@ -85,3 +85,47 @@ apis:
       crt: "classpath:certs/lala.crt"
       key: "classpath:certs/lala.key"
       pem: "classpath:certs/lala.pem"
+
+
+
+/**
+     * Maximum number of concurrent HTTP connections that can be opened to this API.
+     * <p>
+     * Used to control the connection pool size for this API client.
+     * A higher number allows more parallel requests but increases memory and socket usage.
+     */
+    private Integer maxConnections;
+
+    /**
+     * Maximum time (in seconds) a request will wait for a free connection
+     * from the connection pool before failing with a timeout error.
+     * <p>
+     * Useful when all connections are busy — prevents requests from waiting indefinitely.
+     */
+    private Integer pendingAcquireTimeoutSec;
+
+    /**
+     * Maximum time (in milliseconds) allowed for establishing a TCP connection
+     * to the remote API server.
+     * <p>
+     * If the API host is unreachable or slow to respond at the socket level,
+     * this timeout controls how long the client will attempt to connect.
+     */
+    private Integer connectTimeoutMillis;
+
+    /**
+     * Maximum duration (in seconds) allowed to read the response
+     * once the connection is established and data starts flowing.
+     * <p>
+     * Prevents hanging on APIs that are slow to return or stream incomplete data.
+     */
+    private Integer readTimeoutSec;
+
+    /**
+     * Maximum duration (in seconds) allowed for sending the request body
+     * to the API (e.g., uploading data or a large JSON payload).
+     * <p>
+     * Protects the client from being stuck when the server or network is slow
+     * to receive outgoing data.
+     */
+    private Integer writeTimeoutSec;
