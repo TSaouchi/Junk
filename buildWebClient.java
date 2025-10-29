@@ -1,43 +1,81 @@
-private WebClient buildWebClient(ApiConfig apiConfig) {
+import io.netty.channel.ChannelOption;
+import io.netty.handler.timeout.ReadTimeoutHandler;
+import io.netty.handler.timeout.WriteTimeoutHandler;
+import org.springframework.web.reactive.function.client.ExchangeStrategies;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.netty.http.client.HttpClient;
+import reactor.netty.resources.ConnectionProvider;
 
-    // 1. Connection pool per API, configurable via ApiConfig
-    ConnectionProvider provider = ConnectionProvider.builder(apiConfig.getName() + "-pool")
-            .maxConnections(apiConfig.getMaxConnections() != null ? apiConfig.getMaxConnections() : 50)
-            .pendingAcquireTimeout(Duration.ofSeconds(
-                    apiConfig.getPendingAcquireTimeoutSec() != null ? apiConfig.getPendingAcquireTimeoutSec() : 15))
-            .build();
+import java.time.Duration;
+import java.util.Optional;
 
-    // 2. HttpClient with pooling, SSL, and optional read/write timeouts
-    HttpClient httpClient = HttpClient.create(provider)
-            .resolver(DefaultAddressResolverGroup.INSTANCE)
-            .secure(ssl -> ssl.sslContext(apiConfig.getSslContext()))
-            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS,
-                    apiConfig.getConnectTimeoutMillis() != null ? apiConfig.getConnectTimeoutMillis() : 10000);
+public class WebClientFactory implements Factory<WebClient, ApiConfig> {
 
-    // Optional read/write timeouts (can be null for long-running APIs)
-    if (apiConfig.getReadTimeoutSec() != null || apiConfig.getWriteTimeoutSec() != null) {
-        httpClient = httpClient.doOnConnected(conn -> {
-            if (apiConfig.getReadTimeoutSec() != null)
-                conn.addHandlerLast(new ReadTimeoutHandler(apiConfig.getReadTimeoutSec()));
-            if (apiConfig.getWriteTimeoutSec() != null)
-                conn.addHandlerLast(new WriteTimeoutHandler(apiConfig.getWriteTimeoutSec()));
-        });
+    private static final int DEFAULT_MAX_CONNECTIONS = 200;
+    private static final int DEFAULT_PENDING_ACQUIRE_TIMEOUT_SEC = 30;
+    private static final int DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
+    private static final int DEFAULT_MAX_IN_MEMORY_SIZE = 50 * 1024 * 1024; // 50MB
+    private static final int DEFAULT_READ_TIMEOUT_SEC = 120;
+    private static final int DEFAULT_WRITE_TIMEOUT_SEC = 120;
+
+    @Override
+    public WebClient create(ApiConfig apiConfig) {
+        return buildWebClient(apiConfig);
     }
 
-    // 3. Exchange strategies (keep your existing memory buffer)
-    ExchangeStrategies exchangeStrategies = ExchangeStrategies.builder()
-            .codecs(configurer -> configure.defaultCodecs()
-                    .maxInMemorySize(50 * 1024 * 1024))
-            .build();
+    private WebClient buildWebClient(ApiConfig apiConfig) {
+        // Connection pool with keep-alive + idle time
+        ConnectionProvider provider = ConnectionProvider.builder(apiConfig.getName() + "-pool")
+                .maxConnections(Optional.ofNullable(apiConfig.getMaxConnections()).orElse(DEFAULT_MAX_CONNECTIONS))
+                .pendingAcquireTimeout(Duration.ofSeconds(
+                        Optional.ofNullable(apiConfig.getPendingAcquireTimeoutSec()).orElse(DEFAULT_PENDING_ACQUIRE_TIMEOUT_SEC)))
+                .maxIdleTime(Duration.ofSeconds(Optional.ofNullable(apiConfig.getMaxIdleTimeSec()).orElse(60))) // idle timeout
+                .maxLifeTime(Duration.ofMinutes(5)) // optional: total lifetime
+                .build();
 
-    // 4. Build WebClient
-    WebClient webClient = WebClient.builder()
-            .clientConnector(new ReactorClientHttpConnector(httpClient))
-            .exchangeStrategies(exchangeStrategies)
-            .baseUrl(apiConfig.getBaseUrl())
-            .build();
+        // HttpClient
+        HttpClient httpClient = HttpClient.create(provider)
+                .secure(ssl -> ssl.sslContext(apiConfig.getSslContext()))
+                .resolver(DefaultAddressResolverGroup.INSTANCE)
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS,
+                        Optional.ofNullable(apiConfig.getConnectTimeoutMillis()).orElse(DEFAULT_CONNECT_TIMEOUT_MS))
+                .keepAlive(true)
+                .option(ChannelOption.SO_KEEPALIVE, true)
+                .doOnConnected(conn -> {
+                    if (apiConfig.getReadTimeoutSec() != null || apiConfig.getWriteTimeoutSec() != null) {
+                        if (apiConfig.getReadTimeoutSec() != null) {
+                            conn.addHandlerLast(new ReadTimeoutHandler(apiConfig.getReadTimeoutSec()));
+                        } else {
+                            conn.addHandlerLast(new ReadTimeoutHandler(DEFAULT_READ_TIMEOUT_SEC));
+                        }
 
-    return webClient;
+                        if (apiConfig.getWriteTimeoutSec() != null) {
+                            conn.addHandlerLast(new WriteTimeoutHandler(apiConfig.getWriteTimeoutSec()));
+                        } else {
+                            conn.addHandlerLast(new WriteTimeoutHandler(DEFAULT_WRITE_TIMEOUT_SEC));
+                        }
+                    }
+                });
+
+        // Exchange strategies (memory limits)
+        ExchangeStrategies exchangeStrategies = ExchangeStrategies.builder()
+                .codecs(configurer -> configurer.defaultCodecs()
+                        .maxInMemorySize(Optional.ofNullable(apiConfig.getMaxInMemorySize())
+                                .orElse(DEFAULT_MAX_IN_MEMORY_SIZE)))
+                .build();
+
+        // Build and return WebClient
+        return WebClient.builder()
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .exchangeStrategies(exchangeStrategies)
+                .baseUrl(apiConfig.getBaseUrl())
+                .build();
+    }
+
+    @Override
+    public String generateKey(ApiConfig apiConfig) {
+        return apiConfig.getName();
+    }
 }
 
 
